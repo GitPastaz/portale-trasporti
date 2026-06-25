@@ -74,6 +74,9 @@
   .card .cli{font-size:12px;color:var(--ink);margin-top:6px}
   .card .cli a{color:var(--focus);text-decoration:none}
   .card .moto-mod{font-size:12.5px;font-weight:600;color:var(--ink);margin-top:2px}
+  .card .moto-mod .lbl{color:var(--ink-soft);font-weight:600}
+  .card .km-tag{font-size:11.5px;color:var(--ink-soft);margin-top:5px}
+  .card .km-tag .km-ic{font-style:normal;}
   .card .meta{display:flex;gap:14px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);flex-wrap:wrap}
   .card .meta div{font-size:11.5px;color:var(--ink-soft)}
   .card .meta b{display:block;color:var(--ink);font-weight:600;font-size:12px;margin-top:1px}
@@ -104,7 +107,7 @@
   .anomaly-banner b{font-weight:700}
   .anomaly-banner .ic{font-size:14px}
   .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
-  .planner{padding:18px 16px 80px;overflow-y:auto;display:none;max-width:720px}
+  .planner{padding:18px 16px 80px;overflow-y:auto;display:none}
   .planner h2{font-size:17px;margin-bottom:6px}
   .planner .sub{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5}
   .planner .soon{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6}
@@ -114,6 +117,8 @@
   .popup-card.t-ritiro .pbadge{color:#9a5a13}
   .popup-card h4{font-size:14px;margin:4px 0 2px}
   .popup-card p{font-size:12px;color:var(--ink-soft);margin:0 0 8px;line-height:1.4}
+  .popup-card .plbl{color:var(--ink);font-weight:600}
+  .popup-card .popup-av{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0 0 8px;padding-top:8px;border-top:1px solid var(--line)}
   .popup-card .note{font-size:11.5px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:5px 7px;margin:0 0 8px;line-height:1.4}
   .popup-card .nav-btn{display:flex;align-items:center;justify-content:center;gap:7px;background:var(--ink);color:#fff;text-decoration:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:600}
   .popup-card .nav-btn:hover{background:#000}
@@ -137,8 +142,9 @@
   body.view-list .sidebar{display:flex;flex:1;max-width:none}
   body.view-map .sidebar{display:flex;flex:0 0 380px;max-width:380px}
   body.view-map .map-col{display:block}
-  body.view-planner .map-col{display:none}
-  body.view-planner .sidebar{display:flex;flex:1;max-width:none}
+  body.view-planner .sidebar{display:flex;flex:0 0 420px;max-width:420px}
+  body.view-planner .map-col{display:block}
+  body.view-planner .legend{display:none}
   body.view-planner .list, body.view-planner .filters, body.view-planner .list-head{display:none}
   body.view-planner #planner{display:block}
   body.view-list #planner, body.view-map #planner{display:none}
@@ -304,6 +310,8 @@ function setView(v){
   document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
     x.classList.toggle('active', x.dataset.view===v);
   });
+  // rimuovo il percorso del pianificatore quando non sono nel pianificatore
+  if(v!=='planner' && plannerLayer && map){ map.removeLayer(plannerLayer); plannerLayer=null; }
   if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
   if(v==='planner'){ renderPlanner(); }
 }
@@ -388,14 +396,19 @@ function motoModello(t){
 function popupHtml(t){
   const cli=[t.cliente,t.telefono].filter(Boolean).join(' · ');
   const mod=motoModello(t);
+  const avBlocco=[];
+  if(t.autista) avBlocco.push('<span class="plbl">Autista:</span> '+esc(t.autista));
+  if(t.veicolo) avBlocco.push('<span class="plbl">Veicolo:</span> '+esc(t.veicolo));
   return '<div class="popup-card t-'+t.tipo+'">'+
     '<div class="pbadge">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(t.ora?' '+t.ora:'')+'</div>'+
     '<h4>'+esc(t.titolo)+'</h4>'+
     '<p>'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+
     (cli?'<br>'+esc(cli):'')+
-    (t.targa?'<br>Targa: '+esc(t.targa):'')+
-    (mod?'<br>'+esc(mod):'')+
-    (t.autista||t.veicolo?'<br>'+esc([t.autista,t.veicolo].filter(Boolean).join(' · ')):'')+'</p>'+
+    (t.targa?'<br><span class="plbl">Targa:</span> '+esc(t.targa):'')+
+    (mod?'<br><span class="plbl">Moto:</span> '+esc(mod):'')+
+    (t.km_showroom!=null?'<br><span class="plbl">Distanza:</span> ~'+t.km_showroom+' km dallo showroom':'')+
+    '</p>'+
+    (avBlocco.length?'<div class="popup-av">'+avBlocco.join('<br>')+'</div>':'')+
     (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
     flagsHtml(t)+
     '<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a></div>';
@@ -454,10 +467,11 @@ function render(){
       '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
       (nonLoc?'<div class="nogeo-tag">📍 Non sulla mappa: indirizzo da correggere</div>':'')+
       (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':(t.targa?'<div class="cli">Targa '+esc(t.targa)+'</div>':''))+
-      (motoModello(t)?'<div class="moto-mod">'+esc(motoModello(t))+'</div>':'')+
+      (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
+      (t.km_showroom!=null?'<div class="km-tag"><i class="km-ic">📍</i> ~'+t.km_showroom+' km dallo showroom</div>':'')+
       ((t.autista||t.veicolo||t.costo)?'<div class="meta">'+
-        (t.autista?'<div>Autista<b>'+esc(t.autista)+'</b></div>':'')+
-        (t.veicolo?'<div>Veicolo<b>'+esc(t.veicolo)+'</b></div>':'')+
+        (t.autista?'<div>Autista:<b>'+esc(t.autista)+'</b></div>':'')+
+        (t.veicolo?'<div>Veicolo:<b>'+esc(t.veicolo)+'</b></div>':'')+
         (t.costo?'<div>Costo<b>€ '+esc(t.costo)+'</b></div>':'')+'</div>':'')+
       (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
       flagsHtml(t)+
@@ -638,6 +652,43 @@ function renderPlanner(){
 
   el.innerHTML=html;
   agganciaPlanner(giorni);
+  disegnaPercorsoPlanner(R.giro, origine);
+}
+
+let plannerLayer=null;
+function disegnaPercorsoPlanner(giro, origine){
+  if(!map) return;
+  // pulisco il layer precedente
+  if(plannerLayer){ map.removeLayer(plannerLayer); plannerLayer=null; }
+  plannerLayer=L.layerGroup().addTo(map);
+
+  // sequenza di punti: origine -> tappe -> origine
+  const punti=[[origine.lat,origine.lng]];
+  giro.forEach(t=>{ if(t.lat!=null) punti.push([t.lat,t.lng]); });
+  punti.push([origine.lat,origine.lng]);
+
+  // linea diretta del percorso (tratteggiata)
+  L.polyline(punti,{color:'#534AB7',weight:3,opacity:.7,dashArray:'8,6'}).addTo(plannerLayer);
+
+  // marker origine (showroom)
+  L.marker([origine.lat,origine.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500}).addTo(plannerLayer)
+    .bindPopup('<b>'+esc(origine.nome||'Showroom')+'</b><br><span style="color:#5a6573;font-size:12px">Partenza e rientro</span>');
+
+  // marker numerati delle tappe
+  giro.forEach((t,i)=>{
+    if(t.lat==null) return;
+    const isCons=t.tipo==='consegna';
+    const col=isCons?'#1f6feb':'#e0892a';
+    const icon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+col+';border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);color:#fff;font-size:13px;font-weight:700;">'+(i+1)+'</span></div>',iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
+    L.marker([t.lat,t.lng],{icon}).addTo(plannerLayer)
+      .bindPopup('<b>'+(i+1)+'. '+esc(t.titolo||t.cliente||'Tappa')+'</b><br><span style="font-size:12px;color:#5a6573;">'+(isCons?'Consegna':'Ritiro')+' · ~'+t.km+' km</span>');
+  });
+
+  // inquadro il percorso
+  setTimeout(()=>{
+    map.invalidateSize();
+    try{ map.fitBounds(L.latLngBounds(punti).pad(0.15)); }catch(e){}
+  },150);
 }
 
 function agganciaPlanner(){

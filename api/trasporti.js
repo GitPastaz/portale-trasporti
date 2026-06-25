@@ -63,6 +63,17 @@ function siglaProvincia(v) {
 }
 
 // Geocoding gratuito via Nominatim (OpenStreetMap)
+// Distanza approssimata in km (linea d'aria, Haversine) tra due punti.
+// La distanza su strada reale verra' aggiunta con un servizio di routing.
+function kmAria(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lat2 == null) return null;
+  const R = 6371, toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(s)));
+}
+
 // Geocoding di una singola query. Restituisce {lat,lng} o null.
 async function geocodeRaw(query) {
   if (!query) return null;
@@ -319,6 +330,8 @@ module.exports = async (req, res) => {
         t.lat = pos.lat;
         t.lng = pos.lng;
         t.geo = pos.precisione; // "preciso" | "approssimativo"
+        // distanza approssimata dallo Showroom Moto Argento (Cesano Maderno)
+        t.km_showroom = kmAria(ORIGINE.lat, ORIGINE.lng, pos.lat, pos.lng);
         if (pos.precisione === "approssimativo") {
           t.anomalie.push("Posizione approssimativa: verificare indirizzo");
         }
