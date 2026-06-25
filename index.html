@@ -435,13 +435,182 @@ function render(){
   list.innerHTML=html;
   list.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>selectCard(c.dataset.id,true)));
 }
+let plannerState={date:'', veicolo:null};
+
+// distanza approssimata in km tra due punti (formula di Haversine).
+// E' la distanza "in linea d'aria": una stima. Il calcolo su strada
+// reale verra' aggiunto con il servizio di routing.
+function distanzaKm(a,b){
+  if(a.lat==null||b.lat==null) return 0;
+  const R=6371, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return Math.round(2*R*Math.asin(Math.sqrt(s)));
+}
+
+const SLOT_FURGONE=3;
+
+// Costruisce il giro per una lista di trasporti partendo dall'origine.
+// Regola: a ogni passo sceglie la tappa piu' vicina TRA QUELLE AMMESSE
+// dal vincolo dei posti. Una consegna richiede di avere a bordo una moto
+// (un posto occupato da liberare); un ritiro richiede un posto libero.
+// All'avvio si presume che le moto da consegnare siano gia' caricate.
+function costruisciGiro(lista, origine){
+  const consegne=lista.filter(t=>t.tipo==='consegna');
+  const ritiri=lista.filter(t=>t.tipo==='ritiro');
+  // carico iniziale = numero di consegne (moto gia' a bordo alla partenza),
+  // ma non puo' superare la capienza del furgone
+  let carico=Math.min(consegne.length, SLOT_FURGONE);
+  let resto=[...lista];
+  let pos=origine;
+  const giro=[];
+  let kmTot=0;
+  let warn=false; // segnala se il vincolo non e' pienamente rispettabile
+
+  while(resto.length){
+    // tappe ammesse dato il carico attuale
+    let ammesse=resto.filter(t=>{
+      if(t.tipo==='consegna') return carico>0;      // serve una moto a bordo
+      if(t.tipo==='ritiro')   return carico<SLOT_FURGONE; // serve un posto libero
+      return true;
+    });
+    // se nessuna e' ammessa (vincolo bloccato), prendo comunque la piu' vicina
+    if(!ammesse.length){ ammesse=resto; warn=true; }
+    // scelgo la piu' vicina tra le ammesse (con coordinate)
+    ammesse.sort((a,b)=>distanzaKm(pos,a)-distanzaKm(pos,b));
+    const next=ammesse[0];
+    const km=distanzaKm(pos,next);
+    kmTot+=km;
+    // aggiorno il carico
+    if(next.tipo==='consegna') carico=Math.max(0,carico-1);
+    else if(next.tipo==='ritiro') carico=Math.min(SLOT_FURGONE,carico+1);
+    giro.push({...next, km, caricoDopo:carico});
+    pos=next;
+    resto=resto.filter(t=>t!==next);
+  }
+  // rientro all'origine
+  const kmRientro=giro.length?distanzaKm(pos,origine):0;
+  kmTot+=kmRientro;
+  return {giro, kmTot, kmRientro, caricoIniziale:Math.min(consegne.length,SLOT_FURGONE), warn, nConsegne:consegne.length, nRitiri:ritiri.length};
+}
+
+function plannerSlots(carico){
+  let h='<div style="display:inline-flex; gap:3px; vertical-align:middle;">';
+  for(let i=0;i<SLOT_FURGONE;i++){
+    const on=i<carico;
+    h+='<span style="width:14px;height:20px;border-radius:3px;border:1.5px solid '+(on?'#534AB7':'var(--line)')+';background:'+(on?'#CECBF6':'transparent')+';display:inline-block;"></span>';
+  }
+  return h+'</div>';
+}
+
 function renderPlanner(){
   const el=document.getElementById('planner');
   if(!el) return;
-  el.innerHTML='<h2>Pianificatore viaggio</h2>'+
-    '<div class="sub">Organizza il giro del furgone ottimizzando l\'ordine delle tappe.</div>'+
-    '<div class="soon">In arrivo: il pianificatore calcolera\' la sequenza migliore delle consegne e dei ritiri tenendo conto dei 3 posti moto del furgone.</div>';
+
+  // giorni disponibili dai trasporti (con data)
+  const giorni=[...new Set(TRASPORTI.filter(t=>t.data).map(t=>t.data.slice(0,10)))].sort();
+  if(!plannerState.date){
+    // default: oggi se presente, altrimenti il primo giorno disponibile
+    const oggi=new Date().toISOString().slice(0,10);
+    plannerState.date = giorni.includes(oggi)?oggi:(giorni[0]||oggi);
+  }
+
+  // trasporti del giorno scelto, raggruppati per veicolo
+  const delGiorno=TRASPORTI.filter(t=>t.data&&t.data.slice(0,10)===plannerState.date);
+  const veicoli=[...new Set(delGiorno.map(t=>t.veicolo||'(nessun veicolo)'))].sort();
+  if(!plannerState.veicolo||!veicoli.includes(plannerState.veicolo)){
+    plannerState.veicolo=veicoli[0]||null;
+  }
+
+  let html='<h2>Pianificatore viaggio</h2>'+
+    '<div class="sub">Giro ottimizzato per furgone, nel rispetto dei '+SLOT_FURGONE+' posti moto. Le distanze sono approssimative.</div>';
+
+  // selettore giorno
+  html+='<div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">'+
+    '<label style="font-size:13px; color:var(--ink-soft); font-weight:600;">Giorno</label>'+
+    '<input type="date" id="planner-date" value="'+plannerState.date+'" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;">'+
+    '</div>';
+
+  if(!delGiorno.length){
+    html+='<div class="soon">Nessun trasporto programmato per questa data.</div>';
+    el.innerHTML=html; agganciaPlanner(giorni); return;
+  }
+
+  // selettore veicolo (chip)
+  html+='<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">';
+  veicoli.forEach(v=>{
+    const att=v===plannerState.veicolo;
+    html+='<button class="veh-chip" data-v="'+esc(v)+'" style="border:1px solid '+(att?'var(--focus)':'var(--line)')+';background:'+(att?'#e7f0fe':'var(--panel)')+';color:'+(att?'#15489c':'var(--ink-soft)')+';border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;">'+esc(v)+'</button>';
+  });
+  html+='</div>';
+
+  // costruisco il giro per il veicolo selezionato
+  const lista=delGiorno.filter(t=>(t.veicolo||'(nessun veicolo)')===plannerState.veicolo && t.lat!=null);
+  const senzaGeo=delGiorno.filter(t=>(t.veicolo||'(nessun veicolo)')===plannerState.veicolo && t.lat==null);
+
+  if(!lista.length){
+    html+='<div class="soon">Nessuna tappa geolocalizzabile per questo veicolo in questa data.</div>';
+    el.innerHTML=html; agganciaPlanner(giorni); return;
+  }
+
+  const origine={lat:ORIGIN.lat,lng:ORIGIN.lng,nome:ORIGIN.nome};
+  const R=costruisciGiro(lista, origine);
+
+  // riepilogo
+  html+='<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;">'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">Tappe</div><div style="font-size:20px;font-weight:600;">'+R.giro.length+'</div></div>'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">Km (~aria)</div><div style="font-size:20px;font-weight:600;">'+R.kmTot+'</div></div>'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">C/R</div><div style="font-size:20px;font-weight:600;">'+R.nConsegne+'/'+R.nRitiri+'</div></div>'+
+    '</div>';
+
+  if(R.warn){
+    html+='<div style="background:#fff7e6;color:#8a5a00;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px;line-height:1.5;">⚠ Con queste tappe il furgone potrebbe superare i '+SLOT_FURGONE+' posti in qualche momento: verificare l\'ordine manualmente.</div>';
+  }
+
+  // partenza
+  html+='<div style="display:flex;gap:12px;">'+
+    '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;">●</span></div><div style="width:2px;flex:1;background:var(--line);min-height:16px;"></div></div>'+
+    '<div style="padding-bottom:16px;"><div style="font-size:13px;font-weight:600;">'+esc(ORIGIN.nome)+'</div>'+
+    '<div style="font-size:12px;color:var(--ink-soft);">Partenza · '+plannerSlots(R.caricoIniziale)+' <span style="vertical-align:middle;">'+R.caricoIniziale+' moto a bordo</span></div></div>'+
+    '</div>';
+
+  // tappe
+  R.giro.forEach((t,i)=>{
+    const isCons=t.tipo==='consegna';
+    const col=isCons?{f:'#e7f0fe',c:'#15489c',l:'Consegna'}:{f:'#fbf0e1',c:'#9a5a13',l:'Ritiro'};
+    html+='<div style="display:flex;gap:12px;">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:'+col.f+';color:'+col.c+';display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">'+(i+1)+'</div><div style="width:2px;flex:1;background:var(--line);min-height:16px;"></div></div>'+
+      '<div style="padding-bottom:16px;flex:1;">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 7px;border-radius:5px;">'+col.l+'</span>'+
+          '<span style="font-size:12px;color:var(--ink-soft);">~'+t.km+' km</span></div>'+
+        '<div style="font-size:14px;font-weight:600;margin-top:5px;">'+esc(t.titolo||t.cliente||'Tappa')+'</div>'+
+        '<div style="font-size:12.5px;color:var(--ink-soft);margin-top:1px;">'+esc([t.indirizzo,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+        (motoModello(t)?'<div style="font-size:12.5px;margin-top:2px;">'+esc(motoModello(t))+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
+        '<div style="font-size:12px;color:var(--ink-soft);margin-top:8px;">'+plannerSlots(t.caricoDopo)+' <span style="vertical-align:middle;">'+(isCons?'consegnata, libera 1 posto':'ritirata, occupa 1 posto')+' → '+t.caricoDopo+'/3</span></div>'+
+      '</div></div>';
+  });
+
+  // rientro
+  html+='<div style="display:flex;gap:12px;">'+
+    '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;"><span style="font-size:14px;">◉</span></div></div>'+
+    '<div><div style="font-size:13px;font-weight:600;">Rientro Showroom</div>'+
+    '<div style="font-size:12px;color:var(--ink-soft);">~'+R.kmRientro+' km</div></div>'+
+    '</div>';
+
+  if(senzaGeo.length){
+    html+='<div style="margin-top:14px;background:#fdecea;color:#a8200f;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.5;">📍 '+senzaGeo.length+' tappa/e con indirizzo non localizzato non sono nel giro: correggere su HubSpot.</div>';
+  }
+
+  el.innerHTML=html;
+  agganciaPlanner(giorni);
 }
+
+function agganciaPlanner(){
+  const d=document.getElementById('planner-date');
+  if(d) d.addEventListener('change',e=>{plannerState.date=e.target.value;plannerState.veicolo=null;renderPlanner();});
+  document.querySelectorAll('.veh-chip').forEach(b=>b.addEventListener('click',()=>{plannerState.veicolo=b.dataset.v;renderPlanner();}));
+}
+
 function selectCard(id,fromList){
   selected=id;
   const t=TRASPORTI.find(x=>String(x.id)===String(id));
