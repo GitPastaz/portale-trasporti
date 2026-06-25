@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trasporti — Moto Argento</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --ink:#11161d;--ink-soft:#5a6573;--line:#e3e7ec;--bg:#f6f7f9;--panel:#ffffff;
+    --consegna:#1f6feb;--consegna-soft:#e7f0fe;--ritiro:#e0892a;--ritiro-soft:#fbf0e1;
+    --focus:#0b3d91;--shadow:0 1px 2px rgba(16,22,29,.06),0 4px 16px rgba(16,22,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);display:flex;flex-direction:column;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  /* ---- Login ---- */
+  #login{position:fixed;inset:0;background:var(--bg);z-index:5000;display:flex;align-items:center;justify-content:center}
+  #login .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:340px;box-shadow:var(--shadow)}
+  #login h1{font-size:18px;margin-bottom:4px}
+  #login p{font-size:13px;color:var(--ink-soft);margin-bottom:20px}
+  #login .brand-dot{width:10px;height:10px;border-radius:50%;background:var(--ink);display:inline-block;margin-right:8px}
+  #login input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;margin-bottom:12px}
+  #login input:focus{outline:2px solid var(--focus);outline-offset:-1px}
+  #login button{width:100%;background:var(--ink);color:#fff;border:0;border-radius:9px;padding:11px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  #login button:hover{background:#000}
+  #login .err{color:#c0392b;font-size:12.5px;margin-bottom:10px;min-height:16px}
+
+  /* ---- Topbar ---- */
+  .topbar{flex:0 0 auto;display:flex;align-items:center;gap:18px;padding:0 20px;height:60px;background:var(--panel);border-bottom:1px solid var(--line);z-index:1000}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;font-size:15px}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--ink);display:inline-block}
+  .brand small{display:block;font-weight:500;font-size:11px;color:var(--ink-soft)}
+  .topbar .spacer{flex:1}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat b{font-size:18px;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;color:var(--ink-soft)}
+  .reload{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 12px;font:inherit;font-size:12.5px;color:var(--ink-soft);cursor:pointer;margin-left:14px}
+  .reload:hover{color:var(--ink);border-color:var(--ink-soft)}
+
+  .wrap{flex:1;display:flex;min-height:0}
+  .sidebar{flex:0 0 380px;max-width:380px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .filters{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+  .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;border:0;background:transparent;padding:8px 6px;border-radius:7px;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:.12s}
+  .seg button .pip{width:8px;height:8px;border-radius:50%}
+  .seg button[data-type="consegna"] .pip{background:var(--consegna)}
+  .seg button[data-type="ritiro"] .pip{background:var(--ritiro)}
+  .seg button.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  .date-row{display:flex;gap:8px;align-items:center}
+  .date-row label{font-size:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap}
+  .date-row input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;color:var(--ink);background:var(--panel)}
+  .date-row input:focus{outline:2px solid var(--focus);outline-offset:-1px}
+  .clear-date{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;font:inherit;font-size:12px;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+
+  .list-head{padding:12px 18px 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .list{flex:1;overflow-y:auto;padding:0 12px 16px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin:6px 0;cursor:pointer;background:var(--panel);transition:.12s;position:relative}
+  .card:hover{border-color:var(--ink-soft);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card.sel{border-color:var(--focus);box-shadow:0 0 0 2px rgba(11,61,145,.12)}
+  .card .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+  .card.t-consegna .badge{background:var(--consegna-soft);color:#15489c}
+  .card.t-ritiro .badge{background:var(--ritiro-soft);color:#9a5a13}
+  .card .badge svg{width:12px;height:12px}
+  .card .when{float:right;font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums;padding-top:3px}
+  .card h3{font-size:14px;font-weight:650;margin:9px 0 3px;letter-spacing:-.01em}
+  .card .addr{font-size:12.5px;color:var(--ink-soft);line-height:1.4}
+  .card .cli{font-size:12px;color:var(--ink);margin-top:6px}
+  .card .cli a{color:var(--focus);text-decoration:none}
+  .card .moto-mod{font-size:12.5px;font-weight:600;color:var(--ink);margin-top:2px}
+  .card .meta{display:flex;gap:14px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .card .meta div{font-size:11.5px;color:var(--ink-soft)}
+  .card .meta b{display:block;color:var(--ink);font-weight:600;font-size:12px;margin-top:1px}
+  .card .note{margin-top:8px;font-size:12px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:6px 8px;line-height:1.4}
+  .empty{padding:40px 24px;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.6}
+  .loading{padding:40px 24px;text-align:center;color:var(--ink-soft);font-size:13px}
+
+  .map-col{flex:1;position:relative;min-width:0}
+  #map{position:absolute;inset:0}
+  .leaflet-container{background:#eef1f4;font-family:inherit}
+  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+  .pin.consegna{background:var(--consegna)}
+  .pin.ritiro{background:var(--ritiro)}
+  .pin.warn{box-shadow:0 0 0 3px rgba(224,137,42,.35),0 2px 6px rgba(0,0,0,.3)}
+  .pin.approx{background:#9aa0a6 !important;border-style:dashed}
+  .pin svg{transform:rotate(45deg);width:15px;height:15px;color:#fff}
+  .pin.big{width:40px;height:40px;border-width:3px;z-index:1000}
+  .pin.big svg{width:19px;height:19px}
+  .origin-pin{width:18px;height:18px;border-radius:50%;background:var(--ink);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .flags{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .flag{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;line-height:1.35;padding:5px 8px;border-radius:6px;background:#fff7e6;color:#8a5a00}
+  .flag.crit{background:#fdecea;color:#a8200f}
+  .flag .ic{flex:0 0 auto;font-size:12px;line-height:1.2}
+  .card.nogeo{border-style:dashed;border-color:#e0892a}
+  .card.crit{border-color:#d9543f}
+  .anomaly-banner{margin:0 12px 8px;padding:9px 12px;border-radius:9px;background:#fff7e6;color:#8a5a00;font-size:12.5px;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .anomaly-banner.hide{display:none}
+  .anomaly-banner b{font-weight:700}
+  .anomaly-banner .ic{font-size:14px}
+  .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
+  .popup-card{min-width:210px;font-family:inherit}
+  .popup-card .pbadge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .popup-card.t-consegna .pbadge{color:#15489c}
+  .popup-card.t-ritiro .pbadge{color:#9a5a13}
+  .popup-card h4{font-size:14px;margin:4px 0 2px}
+  .popup-card p{font-size:12px;color:var(--ink-soft);margin:0 0 8px;line-height:1.4}
+  .popup-card .note{font-size:11.5px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:5px 7px;margin:0 0 8px;line-height:1.4}
+  .popup-card .nav-btn{display:flex;align-items:center;justify-content:center;gap:7px;background:var(--ink);color:#fff;text-decoration:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:600}
+  .popup-card .nav-btn:hover{background:#000}
+  .popup-card .nav-btn svg{width:14px;height:14px}
+  .leaflet-popup-content{margin:13px 15px}
+  .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow)}
+  .legend{position:absolute;bottom:16px;left:16px;z-index:600;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px;box-shadow:var(--shadow);font-size:12px;display:flex;flex-direction:column;gap:7px}
+  .legend .row{display:flex;align-items:center;gap:8px;color:var(--ink-soft)}
+  .legend .swatch{width:11px;height:11px;border-radius:3px}
+  .legend .swatch.c{background:var(--consegna)}
+  .legend .swatch.r{background:var(--ritiro)}
+  .legend .swatch.o{background:var(--ink);border-radius:50%}
+
+  @media (max-width:860px){
+    .wrap{flex-direction:column}
+    .sidebar{flex:0 0 auto;max-width:none;width:100%;height:46%;border-right:0;border-bottom:1px solid var(--line)}
+    .map-col{height:54%}
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="box">
+    <h1><span class="brand-dot"></span>Trasporti</h1>
+    <p>Accesso riservato — gestione ritiri e consegne</p>
+    <div class="err" id="login-err"></div>
+    <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
+    <button id="login-btn">Entra</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="topbar">
+  <div class="brand"><span class="dot"></span><span>Trasporti<small>Gestione ritiri e consegne</small></span></div>
+  <div class="spacer"></div>
+  <div class="stat"><b id="stat-count">0</b><span id="stat-label">trasporti visibili</span></div>
+  <button class="reload" id="reload">Aggiorna</button>
+</div>
+
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="filters">
+      <div class="seg" id="seg">
+        <button data-type="all" class="active">Tutti</button>
+        <button data-type="consegna"><span class="pip"></span>Consegne</button>
+        <button data-type="ritiro"><span class="pip"></span>Ritiri</button>
+      </div>
+      <div class="date-row">
+        <label for="date">Data</label>
+        <input type="date" id="date">
+        <button class="clear-date" id="clear-date">Tutte</button>
+      </div>
+    </div>
+    <div class="list-head">Trasporti</div>
+    <div class="list" id="list"><div class="loading">Caricamento…</div></div>
+  </aside>
+
+  <div class="map-col">
+    <div id="map"></div>
+    <div class="legend">
+      <div class="row"><span class="swatch c"></span>Consegna (vendita)</div>
+      <div class="row"><span class="swatch r"></span>Ritiro (conto esposizione)</div>
+      <div class="row"><span class="swatch o"></span>Showroom Cesano Maderno</div>
+      <div class="row"><span style="font-size:13px">⚠</span>Dati da verificare</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON = {
+  consegna:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  ritiro:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
+};
+const NAV='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
+
+let map, markers={}, selected=null, ORIGIN=null, TRASPORTI=[];
+let state={type:'all',date:''};
+
+/* ---- LOGIN ---- */
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('pwd').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+async function doLogin(){
+  const pwd=document.getElementById('pwd').value;
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  try{
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+    if(r.ok){ document.getElementById('login').style.display='none'; init(); }
+    else { err.textContent='Password errata. Riprova.'; }
+  }catch(e){ err.textContent='Errore di connessione. Riprova.'; }
+}
+
+/* ---- APP ---- */
+function init(){
+  map = L.map('map',{zoomControl:true}).setView([45.62,9.30],9);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(map);
+  document.getElementById('seg').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    document.querySelectorAll('#seg button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');state.type=b.dataset.type;selected=null;render();
+  });
+  document.getElementById('date').addEventListener('change',e=>{state.date=e.target.value;selected=null;render();});
+  document.getElementById('clear-date').addEventListener('click',()=>{state.date='';document.getElementById('date').value='';selected=null;render();});
+  document.getElementById('reload').addEventListener('click',load);
+  load();
+}
+
+let originMarker=null;
+async function load(){
+  document.getElementById('list').innerHTML='<div class="loading">Caricamento trasporti…</div>';
+  try{
+    // segnaposto anti-cache: forza il browser a chiedere dati freschi
+    const r=await fetch('/api/trasporti?_='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error('errore');
+    const data=await r.json();
+    ORIGIN=data.origine; TRASPORTI=data.trasporti||[];
+    if(ORIGIN){
+      if(originMarker) map.removeLayer(originMarker); // evita duplicati
+      originMarker=L.marker([ORIGIN.lat,ORIGIN.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500})
+        .addTo(map).bindPopup('<b>'+ORIGIN.nome+'</b><br><span style="color:#5a6573;font-size:12px">Punto di partenza</span>');
+    }
+    // rimuovo i vecchi marker prima di ricostruirli
+    Object.values(markers).forEach(m=>map.removeLayer(m));
+    buildMarkers(); render();
+  }catch(e){
+    document.getElementById('list').innerHTML='<div class="empty">Impossibile caricare i trasporti.<br>Riprova con il pulsante Aggiorna.</div>';
+  }
+}
+
+function pinIcon(t,big){
+  const cls = t.tipo
+    + (big?' big':'')
+    + ((t.anomalie&&t.anomalie.length)?' warn':'')
+    + (t.geo==='approssimativo'?' approx':'');
+  return L.divIcon({className:'',html:'<div class="pin '+cls+'">'+ICON[t.tipo]+'</div>',
+    iconSize:big?[40,40]:[30,30],iconAnchor:big?[20,40]:[15,30],popupAnchor:[0,big?-38:-28]});
+}
+function navUrl(t){
+  const dest=[t.indirizzo,t.cap,t.citta,t.prov].filter(Boolean).join(', ');
+  let u='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(dest);
+  if(ORIGIN) u+='&origin='+ORIGIN.lat+','+ORIGIN.lng;
+  return u;
+}
+function flagsHtml(t){
+  if(!t.anomalie||!t.anomalie.length) return '';
+  let h='<div class="flags">';
+  t.anomalie.forEach(a=>{
+    const crit = /non localizzato|mancante|approssimativa/i.test(a);
+    h+='<div class="flag'+(crit?' crit':'')+'"><span class="ic">⚠</span><span>'+esc(a)+'</span></div>';
+  });
+  return h+'</div>';
+}
+function motoModello(t){
+  // "Marca Modello" se presenti
+  return [t.marca,t.modello].filter(Boolean).join(' ');
+}
+function popupHtml(t){
+  const cli=[t.cliente,t.telefono].filter(Boolean).join(' · ');
+  const mod=motoModello(t);
+  return '<div class="popup-card t-'+t.tipo+'">'+
+    '<div class="pbadge">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(t.ora?' '+t.ora:'')+'</div>'+
+    '<h4>'+esc(t.titolo)+'</h4>'+
+    '<p>'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+
+    (cli?'<br>'+esc(cli):'')+
+    (t.targa?'<br>Targa: '+esc(t.targa):'')+
+    (mod?'<br>'+esc(mod):'')+
+    (t.autista||t.veicolo?'<br>'+esc([t.autista,t.veicolo].filter(Boolean).join(' · ')):'')+'</p>'+
+    (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+    flagsHtml(t)+
+    '<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a></div>';
+}
+function buildMarkers(){
+  markers={};
+  TRASPORTI.forEach(t=>{
+    if(t.lat==null||t.lng==null) return;
+    const m=L.marker([t.lat,t.lng],{icon:pinIcon(t,false)}).bindPopup(popupHtml(t));
+    m.on('click',()=>selectCard(t.id,false));
+    markers[t.id]=m;
+  });
+}
+function fmtDate(d){ if(!d)return ''; const dt=new Date(d); if(isNaN(dt))return ''; const g=String(dt.getDate()).padStart(2,'0'),m=String(dt.getMonth()+1).padStart(2,'0'); return g+'/'+m; }
+function fmtDateLong(d){
+  const dt=new Date(d); if(isNaN(dt))return 'Senza data';
+  const gg=['domenica','lunedì','martedì','mercoledì','giovedì','venerdì','sabato'];
+  const mm=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  return gg[dt.getDay()]+' '+String(dt.getDate()).padStart(2,'0')+' '+mm[dt.getMonth()];
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function visible(){
+  return TRASPORTI.filter(t=>
+    (state.type==='all'||t.tipo===state.type) &&
+    (state.date===''|| (t.data && t.data.slice(0,10)===state.date))
+  ).sort((a,b)=>String(a.data||'').localeCompare(String(b.data||'')));
+}
+function render(){
+  const items=visible();
+  document.getElementById('stat-count').textContent=items.length;
+  document.getElementById('stat-label').textContent=items.length===1?'trasporto visibile':'trasporti visibili';
+  Object.entries(markers).forEach(([id,m])=>{ if(items.find(t=>String(t.id)===String(id))) m.addTo(map); else map.removeLayer(m); });
+  const list=document.getElementById('list');
+  if(!items.length){ list.innerHTML='<div class="empty">Nessun trasporto per i filtri scelti.</div>'; return; }
+
+  // banner riepilogo anomalie (sui trasporti attualmente visibili)
+  const nAnom=items.filter(t=>t.anomalie&&t.anomalie.length).length;
+  let html='';
+  if(nAnom>0){
+    html+='<div class="anomaly-banner"><span class="ic">⚠</span><span><b>'+nAnom+'</b> '+
+      (nAnom===1?'trasporto con dati da verificare':'trasporti con dati da verificare')+'</span></div>';
+  }
+
+  let last='';
+  items.forEach(t=>{
+    const dkey=t.data?t.data.slice(0,10):'nodate';
+    if(dkey!==last){ html+='<div class="list-head" style="padding-left:6px">'+fmtDateLong(t.data)+'</div>'; last=dkey; }
+    const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+    const nonLoc = (t.lat==null||t.lng==null);
+    const critico = t.anomalie && t.anomalie.some(a=>/non localizzato/i.test(a));
+    html+='<div class="card t-'+t.tipo+(nonLoc?' nogeo':'')+(critico?' crit':'')+(selected===t.id?' sel':'')+'" data-id="'+esc(t.id)+'">'+
+      (t.data?'<span class="when">'+fmtDate(t.data)+'</span>':'')+
+      '<span class="badge">'+ICON[t.tipo]+(t.tipo==='consegna'?'Consegna':'Ritiro')+'</span>'+
+      '<h3>'+esc(t.titolo)+'</h3>'+
+      '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+      (nonLoc?'<div class="nogeo-tag">📍 Non sulla mappa: indirizzo da correggere</div>':'')+
+      (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':(t.targa?'<div class="cli">Targa '+esc(t.targa)+'</div>':''))+
+      (motoModello(t)?'<div class="moto-mod">'+esc(motoModello(t))+'</div>':'')+
+      ((t.autista||t.veicolo||t.costo)?'<div class="meta">'+
+        (t.autista?'<div>Autista<b>'+esc(t.autista)+'</b></div>':'')+
+        (t.veicolo?'<div>Veicolo<b>'+esc(t.veicolo)+'</b></div>':'')+
+        (t.costo?'<div>Costo<b>€ '+esc(t.costo)+'</b></div>':'')+'</div>':'')+
+      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      flagsHtml(t)+
+      '</div>';
+  });
+  list.innerHTML=html;
+  list.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>selectCard(c.dataset.id,true)));
+}
+function selectCard(id,fromList){
+  selected=id;
+  const t=TRASPORTI.find(x=>String(x.id)===String(id));
+  Object.entries(markers).forEach(([mid,m])=>{const tt=TRASPORTI.find(x=>String(x.id)===String(mid));if(tt)m.setIcon(pinIcon(tt,false));});
+  if(t && markers[id]){ markers[id].setIcon(pinIcon(t,true)); if(t.lat!=null){map.flyTo([t.lat,t.lng],11,{duration:.6}); markers[id].openPopup();} }
+  render();
+  if(!fromList){ setTimeout(()=>{const el=document.querySelector('.card[data-id="'+id+'"]');if(el)el.scrollIntoView({block:'center',behavior:'smooth'});},50); }
+}
+</script>
+</body>
+</html>
