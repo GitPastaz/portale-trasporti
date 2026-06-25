@@ -104,7 +104,7 @@
   .anomaly-banner b{font-weight:700}
   .anomaly-banner .ic{font-size:14px}
   .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
-  .planner{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .planner{padding:18px 16px 80px;overflow-y:auto;display:none;max-width:720px}
   .planner h2{font-size:17px;margin-bottom:6px}
   .planner .sub{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5}
   .planner .soon{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6}
@@ -127,7 +127,23 @@
   .legend .swatch.r{background:var(--ritiro)}
   .legend .swatch.o{background:var(--ink);border-radius:50%}
 
-  /* barra di navigazione inferiore: nascosta su desktop, visibile su mobile */
+  /* switch vista nella topbar (desktop) */
+  .view-switch{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px}
+  .view-switch button{display:flex;align-items:center;gap:7px;border:0;background:transparent;padding:8px 14px;border-radius:7px;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:.12s}
+  .view-switch button svg{width:17px;height:17px}
+  .view-switch button.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  /* su desktop le viste si commutano via classe sul body */
+  body.view-list .map-col{display:none}
+  body.view-list .sidebar{display:flex;flex:1;max-width:none}
+  body.view-map .sidebar{display:none}
+  body.view-map .map-col{display:block}
+  body.view-planner .map-col{display:none}
+  body.view-planner .sidebar{display:flex;flex:1;max-width:none}
+  body.view-planner .list, body.view-planner .filters, body.view-planner .list-head{display:none}
+  body.view-planner #planner{display:block}
+  body.view-list #planner, body.view-map #planner{display:none}
+  /* di default (desktop) la sidebar lista e mappa sono affiancate solo se non c'e' classe vista:
+     ma noi impostiamo sempre una classe vista all'avvio, quindi qui gestiamo i casi */
   .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:2000;
     background:var(--panel);border-top:1px solid var(--line);
     padding:6px 8px calc(6px + env(safe-area-inset-bottom));
@@ -142,6 +158,7 @@
   .card-actions{display:none}
 
   @media (max-width:860px){
+    .view-switch{display:none}
     .topbar{height:auto;flex-wrap:wrap;padding:10px 14px;gap:10px}
     .brand small{display:none}
     .bottom-nav{display:flex}
@@ -197,6 +214,12 @@
 <!-- APP -->
 <div class="topbar">
   <div class="brand"><span class="dot"></span><span>Trasporti<small>Gestione ritiri e consegne</small></span></div>
+  <div class="spacer"></div>
+  <div class="view-switch" id="view-switch">
+    <button data-view="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Lista</span></button>
+    <button data-view="map" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg><span>Mappa</span></button>
+    <button data-view="planner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/><path d="m4.22 4.22 4.24 4.24m6.36 6.36 4.24 4.24"/><path d="M1 12h6m6 0h6"/><path d="m4.22 19.78 4.24-4.24m6.36-6.36 4.24-4.24"/></svg><span>Pianificatore</span></button>
+  </div>
   <div class="spacer"></div>
   <div class="stat"><b id="stat-count">0</b><span id="stat-label">trasporti visibili</span></div>
   <button class="reload" id="reload">Aggiorna</button>
@@ -274,26 +297,38 @@ async function doLogin(){
 }
 
 /* ---- APP ---- */
+function setView(v){
+  document.body.classList.remove('view-list','view-map','view-planner');
+  document.body.classList.add('view-'+v);
+  // sincronizzo lo stato attivo di entrambe le barre (mobile + desktop)
+  document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
+    x.classList.toggle('active', x.dataset.view===v);
+  });
+  if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
+  if(v==='planner'){ renderPlanner(); }
+}
+
 function init(){
-  document.body.classList.add('view-list'); // su mobile parte dalla lista
+  // vista iniziale: Mappa su desktop, Lista su mobile (schermo stretto)
+  const startView = window.innerWidth<=860 ? 'list' : 'map';
+  document.body.classList.add('view-'+startView);
   map = L.map('map',{zoomControl:true}).setView([45.62,9.30],9);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(map);
+  // imposto lo stato attivo iniziale delle barre
+  document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
+    x.classList.toggle('active', x.dataset.view===startView);
+  });
   document.getElementById('seg').addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;
     document.querySelectorAll('#seg button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');state.type=b.dataset.type;selected=null;render();
   });
-  // barra di navigazione inferiore (mobile): Lista / Mappa / Percorso
+  // barra inferiore (mobile) e switch in alto (desktop) usano la stessa logica
   document.getElementById('bottom-nav').addEventListener('click',e=>{
-    const b=e.target.closest('button');if(!b)return;
-    document.querySelectorAll('#bottom-nav button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    const v=b.dataset.view;
-    document.body.classList.remove('view-list','view-map','view-planner');
-    document.body.classList.add('view-'+v);
-    // la mappa va "risvegliata" quando torna visibile, altrimenti resta grigia
-    if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
-    if(v==='planner'){ renderPlanner(); }
+    const b=e.target.closest('button');if(b) setView(b.dataset.view);
+  });
+  document.getElementById('view-switch').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(b) setView(b.dataset.view);
   });
   document.getElementById('date').addEventListener('change',e=>{state.date=e.target.value;selected=null;render();});
   document.getElementById('clear-date').addEventListener('click',()=>{state.date='';document.getElementById('date').value='';selected=null;render();});
