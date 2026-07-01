@@ -490,10 +490,9 @@ function render(){
       (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':(t.targa?'<div class="cli">Targa '+esc(t.targa)+'</div>':''))+
       (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
       (t.km_showroom!=null?'<div class="km-tag"><i class="km-ic">📍</i> ~'+t.km_showroom+' km dallo showroom</div>':'')+
-      ((t.autista||t.veicolo||t.costo)?'<div class="meta">'+
+      ((t.autista||t.veicolo)?'<div class="meta">'+
         (t.autista?'<div>Autista:<b>'+esc(t.autista)+'</b></div>':'')+
-        (t.veicolo?'<div>Veicolo:<b>'+esc(t.veicolo)+'</b></div>':'')+
-        (t.costo?'<div>Costo<b>€ '+esc(t.costo)+'</b></div>':'')+'</div>':'')+
+        (t.veicolo?'<div>Veicolo:<b>'+esc(t.veicolo)+'</b></div>':'')+'</div>':'')+
       (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
       flagsHtml(t)+
       '<div class="card-actions">'+
