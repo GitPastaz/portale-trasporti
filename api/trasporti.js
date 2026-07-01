@@ -6,6 +6,8 @@
 // ============================================================
 
 // --- Configurazione: punto di partenza (sede) ---
+// Le coordinate vengono ricavate geolocalizzando l'indirizzo (vedi sotto).
+// I valori qui sono un fallback se il geocoding non risponde.
 const ORIGINE = {
   nome: "Showroom Cesano Maderno",
   indirizzo: "Via Nazionale dei Giovi 28, 20811 Cesano Maderno MB",
@@ -45,7 +47,6 @@ const F = {
   // Comuni
   veicolo: "veicolo_del_trasporto",
   autista: "autista_del_trasporto",
-  costo: "costo_trasporto",
   note: "note_trasporto",
 };
 
@@ -179,6 +180,14 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Geolocalizzo subito l'indirizzo della sede, cosi' sia il pin sia il
+    // calcolo delle distanze partono dal punto esatto. Fallback su ORIGINE.
+    const origineOut = { ...ORIGINE };
+    try {
+      const posSede = await geocodeRaw(ORIGINE.indirizzo);
+      if (posSede) { origineOut.lat = posSede.lat; origineOut.lng = posSede.lng; }
+    } catch (e) {}
+
     // Timestamp di inizio giornata di oggi (mezzanotte ora italiana).
     // HubSpot confronta le date in millisecondi UTC.
     const oggi = new Date();
@@ -242,7 +251,6 @@ module.exports = async (req, res) => {
         titolo: p.dealname || "Trasporto",
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
         veicolo: p[F.veicolo] || "",
-        costo: p[F.costo] || "",
         note: p[F.note] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
@@ -260,7 +268,6 @@ module.exports = async (req, res) => {
         titolo: p.dealname || "Trasporto",
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
         veicolo: p[F.veicolo] || "",
-        costo: p[F.costo] || "",
         note: p[F.note] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
@@ -331,7 +338,7 @@ module.exports = async (req, res) => {
         t.lng = pos.lng;
         t.geo = pos.precisione; // "preciso" | "approssimativo"
         // distanza approssimata dallo Showroom Moto Argento (Cesano Maderno)
-        t.km_showroom = kmAria(ORIGINE.lat, ORIGINE.lng, pos.lat, pos.lng);
+        t.km_showroom = kmAria(origineOut.lat, origineOut.lng, pos.lat, pos.lng);
         if (pos.precisione === "approssimativo") {
           t.anomalie.push("Posizione approssimativa: verificare indirizzo");
         }
@@ -349,7 +356,7 @@ module.exports = async (req, res) => {
     // "Aggiorna" mostra sempre lo stato reale di HubSpot.
     res.setHeader("Cache-Control", "no-store, max-age=0, s-maxage=30");
     return res.status(200).json({
-      origine: ORIGINE,
+      origine: origineOut,
       trasporti,
       riepilogo: { totale: trasporti.length, con_anomalie: conAnomalie },
     });
