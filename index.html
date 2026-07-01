@@ -410,7 +410,7 @@ function popupHtml(t){
   if(t.autista) avBlocco.push('<span class="plbl">Autista:</span> '+esc(t.autista));
   if(t.veicolo) avBlocco.push('<span class="plbl">Veicolo:</span> '+esc(t.veicolo));
   return '<div class="popup-card t-'+t.tipo+'">'+
-    '<div class="pbadge">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(t.ora?' '+t.ora:'')+'</div>'+
+    '<div class="pbadge">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+'</div>'+
     '<h4>'+esc(t.titolo)+'</h4>'+
     '<p>'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+
     (cli?'<br>'+esc(cli):'')+
@@ -433,6 +433,17 @@ function buildMarkers(){
   });
 }
 function fmtDate(d){ if(!d)return ''; const dt=new Date(d); if(isNaN(dt))return ''; const g=String(dt.getDate()).padStart(2,'0'),m=String(dt.getMonth()+1).padStart(2,'0'); return g+'/'+m; }
+function fmtOra(d){
+  if(!d)return '';
+  const dt=new Date(d); if(isNaN(dt))return '';
+  // orario in fuso orario italiano (le date HubSpot arrivano in UTC)
+  try{
+    return dt.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Rome'});
+  }catch(e){
+    const h=String(dt.getHours()).padStart(2,'0'),mi=String(dt.getMinutes()).padStart(2,'0');
+    return h+':'+mi;
+  }
+}
 function fmtDateLong(d){
   const dt=new Date(d); if(isNaN(dt))return 'Senza data';
   const gg=['domenica','lunedì','martedì','mercoledì','giovedì','venerdì','sabato'];
@@ -471,7 +482,7 @@ function render(){
     const nonLoc = (t.lat==null||t.lng==null);
     const critico = t.anomalie && t.anomalie.some(a=>/non localizzato/i.test(a));
     html+='<div class="card t-'+t.tipo+(nonLoc?' nogeo':'')+(critico?' crit':'')+(selected===t.id?' sel':'')+'" data-id="'+esc(t.id)+'">'+
-      (t.data?'<span class="when">'+fmtDate(t.data)+'</span>':'')+
+      (t.data?'<span class="when">'+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+'</span>':'')+
       '<span class="badge">'+ICON[t.tipo]+(t.tipo==='consegna'?'Consegna':'Ritiro')+'</span>'+
       '<h3>'+esc(t.titolo)+'</h3>'+
       '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
@@ -641,7 +652,7 @@ function renderPlanner(){
       '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:'+col.f+';color:'+col.c+';display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">'+(i+1)+'</div><div style="width:2px;flex:1;background:var(--line);min-height:16px;"></div></div>'+
       '<div style="padding-bottom:16px;flex:1;">'+
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 7px;border-radius:5px;">'+col.l+'</span>'+
-          '<span style="font-size:12px;color:var(--ink-soft);">~'+t.km+' km</span></div>'+
+          '<span style="font-size:12px;color:var(--ink-soft);">'+(fmtOra(t.data)?'🕐 '+fmtOra(t.data)+' · ':'')+'~'+t.km+' km</span></div>'+
         '<div style="font-size:14px;font-weight:600;margin-top:5px;">'+esc(t.titolo||t.cliente||'Tappa')+'</div>'+
         '<div style="font-size:12.5px;color:var(--ink-soft);margin-top:1px;">'+esc([t.indirizzo,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
         (motoModello(t)?'<div style="font-size:12.5px;margin-top:2px;">'+esc(motoModello(t))+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
