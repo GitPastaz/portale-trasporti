@@ -310,10 +310,20 @@ function setView(v){
   document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
     x.classList.toggle('active', x.dataset.view===v);
   });
-  // rimuovo il percorso del pianificatore quando non sono nel pianificatore
-  if(v!=='planner' && plannerLayer && map){ map.removeLayer(plannerLayer); plannerLayer=null; }
+  if(v==='planner'){
+    // nel pianificatore mostro SOLO il percorso del giro: nascondo i
+    // marker normali e il pin origine, che verranno ridisegnati nel layer
+    // dedicato del pianificatore.
+    Object.values(markers).forEach(m=>map&&map.removeLayer(m));
+    if(originMarker&&map) map.removeLayer(originMarker);
+    renderPlanner();
+  } else {
+    // uscendo dal pianificatore: rimuovo il percorso e ripristino i marker
+    if(plannerLayer&&map){ map.removeLayer(plannerLayer); plannerLayer=null; }
+    if(map){ render(); } // ridisegna i marker normali secondo i filtri
+    if(originMarker&&map) originMarker.addTo(map);
+  }
   if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
-  if(v==='planner'){ renderPlanner(); }
 }
 
 function init(){
