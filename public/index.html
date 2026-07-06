@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trasporti">
+<title>Trasporti — Moto Argento</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --ink:#11161d;--ink-soft:#5a6573;--line:#e3e7ec;--bg:#f6f7f9;--panel:#ffffff;
+    --consegna:#1f6feb;--consegna-soft:#e7f0fe;--ritiro:#e0892a;--ritiro-soft:#fbf0e1;
+    --focus:#0b3d91;--shadow:0 1px 2px rgba(16,22,29,.06),0 4px 16px rgba(16,22,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);display:flex;flex-direction:column;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  /* ---- Login ---- */
+  #login{position:fixed;inset:0;background:var(--bg);z-index:5000;display:flex;align-items:center;justify-content:center}
+  #login .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:340px;box-shadow:var(--shadow)}
+  #login .version{text-align:center;margin-top:18px;font-size:11px;color:var(--ink-soft);opacity:.6;letter-spacing:.02em}
+  #login h1{font-size:18px;margin-bottom:4px}
+  #login p{font-size:13px;color:var(--ink-soft);margin-bottom:20px}
+  #login .brand-dot{width:10px;height:10px;border-radius:50%;background:var(--ink);display:inline-block;margin-right:8px}
+  #login input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;margin-bottom:12px}
+  #login input:focus{outline:2px solid var(--focus);outline-offset:-1px}
+  #login button{width:100%;background:var(--ink);color:#fff;border:0;border-radius:9px;padding:11px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  #login button:hover{background:#000}
+  #login .err{color:#c0392b;font-size:12.5px;margin-bottom:10px;min-height:16px}
+
+  /* ---- Topbar ---- */
+  .topbar{flex:0 0 auto;display:flex;align-items:center;gap:18px;padding:0 20px;height:60px;background:var(--panel);border-bottom:1px solid var(--line);z-index:1000}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;font-size:15px}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--ink);display:inline-block}
+  .brand small{display:block;font-weight:500;font-size:11px;color:var(--ink-soft)}
+  .topbar .spacer{flex:1}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat b{font-size:18px;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;color:var(--ink-soft)}
+  .reload{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 12px;font:inherit;font-size:12.5px;color:var(--ink-soft);cursor:pointer;margin-left:14px}
+  .reload:hover{color:var(--ink);border-color:var(--ink-soft)}
+
+  .wrap{flex:1;display:flex;min-height:0}
+  .sidebar{flex:0 0 380px;max-width:380px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .filters{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+  .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;border:0;background:transparent;padding:8px 6px;border-radius:7px;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:.12s}
+  .seg button .pip{width:8px;height:8px;border-radius:50%}
+  .seg button[data-type="consegna"] .pip{background:var(--consegna)}
+  .seg button[data-type="ritiro"] .pip{background:var(--ritiro)}
+  .seg button.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  .date-row{display:flex;gap:8px;align-items:center}
+  .date-row label{font-size:12px;color:var(--ink-soft);font-weight:500;white-space:nowrap}
+  .date-row input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;color:var(--ink);background:var(--panel)}
+  .date-row input:focus{outline:2px solid var(--focus);outline-offset:-1px}
+  .clear-date{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;font:inherit;font-size:12px;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+
+  .list-head{padding:12px 18px 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .list{flex:1;overflow-y:auto;padding:0 12px 16px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin:6px 0;cursor:pointer;background:var(--panel);transition:.12s;position:relative}
+  .card:hover{border-color:var(--ink-soft);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card.sel{border-color:var(--focus);box-shadow:0 0 0 2px rgba(11,61,145,.12)}
+  .card .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+  .card.t-consegna .badge{background:var(--consegna-soft);color:#15489c}
+  .card.t-ritiro .badge{background:var(--ritiro-soft);color:#9a5a13}
+  .card .badge svg{width:12px;height:12px}
+  .card .when{float:right;font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums;padding-top:3px}
+  .card h3{font-size:14px;font-weight:650;margin:9px 0 3px;letter-spacing:-.01em}
+  .card .addr{font-size:12.5px;color:var(--ink-soft);line-height:1.4}
+  .card .cli{font-size:12px;color:var(--ink);margin-top:6px}
+  .card .cli a{color:var(--focus);text-decoration:none}
+  .card .moto-mod{font-size:12.5px;font-weight:600;color:var(--ink);margin-top:2px}
+  .card .moto-mod .lbl{color:var(--ink-soft);font-weight:600}
+  .card .km-tag{font-size:11.5px;color:var(--ink-soft);margin-top:5px}
+  .card .km-tag .km-ic{font-style:normal;}
+  .card .meta{display:flex;gap:14px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .card .meta div{font-size:11.5px;color:var(--ink-soft)}
+  .card .meta b{display:block;color:var(--ink);font-weight:600;font-size:12px;margin-top:1px}
+  .card .note{margin-top:8px;font-size:12px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:6px 8px;line-height:1.4}
+  .empty{padding:40px 24px;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.6}
+  .loading{padding:40px 24px;text-align:center;color:var(--ink-soft);font-size:13px}
+
+  .map-col{flex:1;position:relative;min-width:0}
+  #map{position:absolute;inset:0}
+  .leaflet-container{background:#eef1f4;font-family:inherit}
+  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+  .pin.consegna{background:var(--consegna)}
+  .pin.ritiro{background:var(--ritiro)}
+  .pin.warn{box-shadow:0 0 0 3px rgba(224,137,42,.35),0 2px 6px rgba(0,0,0,.3)}
+  .pin.approx{background:#9aa0a6 !important;border-style:dashed}
+  .pin svg{transform:rotate(45deg);width:15px;height:15px;color:#fff}
+  .pin.big{width:40px;height:40px;border-width:3px;z-index:1000}
+  .pin.big svg{width:19px;height:19px}
+  .origin-pin{width:18px;height:18px;border-radius:50%;background:var(--ink);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .flags{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .flag{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;line-height:1.35;padding:5px 8px;border-radius:6px;background:#fff7e6;color:#8a5a00}
+  .flag.crit{background:#fdecea;color:#a8200f}
+  .flag .ic{flex:0 0 auto;font-size:12px;line-height:1.2}
+  .card.nogeo{border-style:dashed;border-color:#e0892a}
+  .card.crit{border-color:#d9543f}
+  .anomaly-banner{margin:0 12px 8px;padding:9px 12px;border-radius:9px;background:#fff7e6;color:#8a5a00;font-size:12.5px;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .anomaly-banner.hide{display:none}
+  .anomaly-banner b{font-weight:700}
+  .anomaly-banner .ic{font-size:14px}
+  .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
+  .planner{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .organizzare{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .planner h2, .organizzare h2{font-size:17px;margin-bottom:6px}
+  .planner .sub, .organizzare .sub{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5}
+  .planner .soon, .organizzare .soon{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6}
+  .org-card{border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin:0 0 10px;background:var(--panel)}
+  .org-card h3{font-size:15px;font-weight:650;margin:9px 0 3px;letter-spacing:-.01em}
+  .org-card .addr{font-size:13px;color:var(--ink-soft);line-height:1.4}
+  .org-card .cli{font-size:12.5px;color:var(--ink);margin-top:6px}
+  .org-card .cli a{color:var(--focus);text-decoration:none}
+  .org-card .moto-mod{font-size:12.5px;font-weight:600;margin-top:3px}
+  .org-card .moto-mod .lbl{color:var(--ink-soft)}
+  .org-card .note{margin-top:8px;font-size:12px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:6px 8px;line-height:1.4}
+  .org-card .flags{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .popup-card{min-width:210px;font-family:inherit}
+  .popup-card .pbadge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .popup-card.t-consegna .pbadge{color:#15489c}
+  .popup-card.t-ritiro .pbadge{color:#9a5a13}
+  .popup-card h4{font-size:14px;margin:4px 0 2px}
+  .popup-card p{font-size:12px;color:var(--ink-soft);margin:0 0 8px;line-height:1.4}
+  .popup-card .plbl{color:var(--ink);font-weight:600}
+  .popup-card .popup-av{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0 0 8px;padding-top:8px;border-top:1px solid var(--line)}
+  .popup-card .note{font-size:11.5px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:5px 7px;margin:0 0 8px;line-height:1.4}
+  .popup-card .nav-btn{display:flex;align-items:center;justify-content:center;gap:7px;background:var(--ink);color:#fff;text-decoration:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:600}
+  .popup-card .nav-btn:hover{background:#000}
+  .popup-card .nav-btn svg{width:14px;height:14px}
+  .leaflet-popup-content{margin:13px 15px}
+  .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow)}
+  .legend{position:absolute;bottom:16px;left:16px;z-index:600;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px;box-shadow:var(--shadow);font-size:12px;display:flex;flex-direction:column;gap:7px}
+  .legend .row{display:flex;align-items:center;gap:8px;color:var(--ink-soft)}
+  .legend .swatch{width:11px;height:11px;border-radius:3px}
+  .legend .swatch.c{background:var(--consegna)}
+  .legend .swatch.r{background:var(--ritiro)}
+  .legend .swatch.o{background:var(--ink);border-radius:50%}
+
+  /* switch vista nella topbar (desktop) */
+  .view-switch{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px}
+  .view-switch button{display:flex;align-items:center;gap:7px;border:0;background:transparent;padding:8px 14px;border-radius:7px;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:.12s}
+  .view-switch button svg{width:17px;height:17px}
+  .view-switch button.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  /* su desktop le viste si commutano via classe sul body */
+  body.view-list .map-col{display:none}
+  body.view-list .sidebar{display:flex;flex:1;max-width:none}
+  body.view-map .sidebar{display:flex;flex:0 0 380px;max-width:380px}
+  body.view-map .map-col{display:block}
+  body.view-planner .sidebar{display:flex;flex:0 0 420px;max-width:420px}
+  body.view-planner .map-col{display:block}
+  body.view-planner .legend{display:none}
+  body.view-planner .list, body.view-planner .filters, body.view-planner .list-head{display:none}
+  body.view-planner #planner{display:block}
+  body.view-list #planner, body.view-map #planner{display:none}
+  /* vista Da organizzare (desktop): a tutta larghezza, senza mappa */
+  body.view-organizzare .sidebar{display:flex;flex:1;max-width:none}
+  body.view-organizzare .map-col{display:none}
+  body.view-organizzare .list, body.view-organizzare .filters, body.view-organizzare .list-head{display:none}
+  body.view-organizzare #planner{display:none}
+  body.view-organizzare #organizzare{display:block}
+  @media (min-width:861px){
+    #organizzare .org-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+  }
+  #organizzare{display:none}
+  body.view-list #organizzare, body.view-map #organizzare, body.view-planner #organizzare{display:none}
+  /* di default (desktop) la sidebar lista e mappa sono affiancate solo se non c'e' classe vista:
+     ma noi impostiamo sempre una classe vista all'avvio, quindi qui gestiamo i casi */
+  .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:2000;
+    background:var(--panel);border-top:1px solid var(--line);
+    padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    box-shadow:0 -2px 12px rgba(16,22,29,.06)}
+  .bottom-nav button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;
+    align-items:center;gap:3px;padding:7px 4px;border-radius:10px;color:var(--ink-soft);
+    font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+  .bottom-nav button svg{width:22px;height:22px}
+  .bottom-nav button.active{color:var(--focus)}
+  .bottom-nav button.active svg{stroke:var(--focus)}
+  /* azioni mobile (naviga/chiama) nelle card: nascoste su desktop */
+  .card-actions{display:none}
+
+  @media (max-width:860px){
+    .view-switch{display:none}
+    .topbar{height:auto;flex-wrap:wrap;padding:10px 14px;gap:10px}
+    .brand small{display:none}
+    .bottom-nav{display:flex}
+    .wrap{flex-direction:column}
+    .sidebar{flex:1 1 auto;max-width:none;width:100%;height:auto;border-right:0;min-height:0}
+    .map-col{height:auto;flex:1 1 auto}
+    /* le viste si alternano in base alla classe sul body */
+    body.view-map .sidebar{display:none}
+    body.view-map .map-col{display:block;height:calc(100vh - 62px - 64px)}
+    body.view-list .map-col{display:none}
+    body.view-list .sidebar{display:flex;flex-direction:column}
+    body.view-planner .sidebar{display:flex;flex-direction:column}
+    body.view-planner .map-col{display:none}
+    body.view-planner .list, body.view-planner .filters, body.view-planner .list-head{display:none}
+    body.view-planner #planner{display:block !important}
+    body.view-list #planner, body.view-map #planner{display:none !important}
+    /* vista Da organizzare (mobile) */
+    body.view-organizzare .map-col{display:none}
+    body.view-organizzare .list, body.view-organizzare .filters, body.view-organizzare .list-head{display:none}
+    body.view-organizzare #organizzare{display:block !important}
+    body.view-list #organizzare, body.view-map #organizzare, body.view-planner #organizzare{display:none !important}
+    /* spazio in fondo per non finire sotto la barra */
+    .list{padding:0 12px 16px}
+    .card{padding:15px 16px;margin:8px 0}
+    .card h3{font-size:16px}
+    .card .addr{font-size:14px}
+    .card .moto-mod{font-size:15px;font-weight:700;margin-top:4px}
+    .card .cli{font-size:14px;margin-top:8px}
+    /* pulsanti grandi Naviga + Chiama in fondo a ogni card */
+    .card-actions{display:flex;gap:8px;margin-top:12px}
+    .card-actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+      padding:13px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none}
+    .card-actions a svg{width:17px;height:17px}
+    .act-nav{background:var(--ink);color:#fff}
+    .act-call{background:#1f8a4c;color:#fff}
+    .act-call.disabled{background:var(--line);color:var(--ink-soft);pointer-events:none}
+    .filters{padding:14px 14px}
+    .seg button{padding:11px 6px;font-size:14px}
+    .date-row input{padding:11px 10px;font-size:14px}
+    /* contenitore liste scrollabile sopra la barra inferiore */
+    .sidebar{padding-bottom:70px}
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="box">
+    <h1><span class="brand-dot"></span>Trasporti</h1>
+    <p>Accesso riservato — gestione ritiri e consegne</p>
+    <div class="err" id="login-err"></div>
+    <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
+    <button id="login-btn">Entra</button>
+    <div class="version">v1.5.0</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="topbar">
+  <div class="brand"><span class="dot"></span><span>Trasporti<small>Gestione ritiri e consegne</small></span></div>
+  <div class="spacer"></div>
+  <div class="view-switch" id="view-switch">
+    <button data-view="map" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg><span>Mappa</span></button>
+    <button data-view="organizzare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg><span>Da organizzare</span></button>
+    <button data-view="planner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/><path d="m4.22 4.22 4.24 4.24m6.36 6.36 4.24 4.24"/><path d="M1 12h6m6 0h6"/><path d="m4.22 19.78 4.24-4.24m6.36-6.36 4.24-4.24"/></svg><span>Pianificatore</span></button>
+  </div>
+  <div class="spacer"></div>
+  <div class="stat"><b id="stat-count">0</b><span id="stat-label">trasporti visibili</span></div>
+  <button class="reload" id="reload">Aggiorna</button>
+</div>
+
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="filters">
+      <div class="seg" id="seg">
+        <button data-type="all" class="active">Tutti</button>
+        <button data-type="consegna"><span class="pip"></span>Consegne</button>
+        <button data-type="ritiro"><span class="pip"></span>Ritiri</button>
+      </div>
+      <div class="date-row">
+        <label for="date">Data</label>
+        <input type="date" id="date">
+        <button class="clear-date" id="clear-date">Tutte</button>
+      </div>
+    </div>
+    <div class="list-head">Trasporti</div>
+    <div class="list" id="list"><div class="loading">Caricamento…</div></div>
+    <div class="planner" id="planner"></div>
+    <div class="organizzare" id="organizzare"></div>
+  </aside>
+
+  <div class="map-col">
+    <div id="map"></div>
+    <div class="legend">
+      <div class="row"><span class="swatch c"></span>Consegna (vendita)</div>
+      <div class="row"><span class="swatch r"></span>Ritiro (conto esposizione)</div>
+      <div class="row"><span class="swatch o"></span>Showroom Cesano Maderno</div>
+      <div class="row"><span style="font-size:13px">⚠</span>Dati da verificare</div>
+    </div>
+  </div>
+</div>
+
+<!-- BARRA NAVIGAZIONE INFERIORE (mobile) -->
+<nav class="bottom-nav" id="bottom-nav">
+  <button data-view="list" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    <span>Lista</span>
+  </button>
+  <button data-view="map">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+    <span>Mappa</span>
+  </button>
+  <button data-view="organizzare">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
+    <span>Da organizzare</span>
+  </button>
+  <button data-view="planner" id="nav-planner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/><path d="m4.22 4.22 4.24 4.24m6.36 6.36 4.24 4.24"/><path d="M1 12h6m6 0h6"/><path d="m4.22 19.78 4.24-4.24m6.36-6.36 4.24-4.24"/></svg>
+    <span>Percorso</span>
+  </button>
+</nav>
+
+<script>
+const ICON = {
+  consegna:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  ritiro:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
+};
+const NAV='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
+const CALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+
+let map, markers={}, selected=null, ORIGIN=null, TRASPORTI=[], DA_ORGANIZZARE=[];
+let state={type:'all',date:''};
+
+/* ---- LOGIN ---- */
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('pwd').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+async function doLogin(){
+  const pwd=document.getElementById('pwd').value;
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  try{
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+    if(r.ok){ document.getElementById('login').style.display='none'; init(); }
+    else { err.textContent='Password errata. Riprova.'; }
+  }catch(e){ err.textContent='Errore di connessione. Riprova.'; }
+}
+
+/* ---- APP ---- */
+function setView(v){
+  document.body.classList.remove('view-list','view-map','view-planner','view-organizzare');
+  document.body.classList.add('view-'+v);
+  // sincronizzo lo stato attivo di entrambe le barre (mobile + desktop)
+  document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
+    x.classList.toggle('active', x.dataset.view===v);
+  });
+  if(v==='organizzare'){ renderOrganizzare(); }
+  if(v==='planner'){
+    // nel pianificatore mostro SOLO il percorso del giro: nascondo i
+    // marker normali e il pin origine, che verranno ridisegnati nel layer
+    // dedicato del pianificatore.
+    Object.values(markers).forEach(m=>map&&map.removeLayer(m));
+    if(originMarker&&map) map.removeLayer(originMarker);
+    renderPlanner();
+  } else {
+    // uscendo dal pianificatore: rimuovo il percorso e ripristino i marker
+    if(plannerLayer&&map){ map.removeLayer(plannerLayer); plannerLayer=null; }
+    if(map){ render(); } // ridisegna i marker normali secondo i filtri
+    if(originMarker&&map) originMarker.addTo(map);
+  }
+  if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
+}
+
+function init(){
+  // vista iniziale: Mappa su desktop, Lista su mobile (schermo stretto)
+  const startView = window.innerWidth<=860 ? 'list' : 'map';
+  document.body.classList.add('view-'+startView);
+  map = L.map('map',{zoomControl:true}).setView([45.62,9.30],9);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(map);
+  // imposto lo stato attivo iniziale delle barre
+  document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
+    x.classList.toggle('active', x.dataset.view===startView);
+  });
+  document.getElementById('seg').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    document.querySelectorAll('#seg button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');state.type=b.dataset.type;selected=null;render();
+  });
+  // barra inferiore (mobile) e switch in alto (desktop) usano la stessa logica
+  document.getElementById('bottom-nav').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(b) setView(b.dataset.view);
+  });
+  document.getElementById('view-switch').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(b) setView(b.dataset.view);
+  });
+  document.getElementById('date').addEventListener('change',e=>{state.date=e.target.value;selected=null;render();});
+  document.getElementById('clear-date').addEventListener('click',()=>{state.date='';document.getElementById('date').value='';selected=null;render();});
+  document.getElementById('reload').addEventListener('click',load);
+  load();
+}
+
+let originMarker=null;
+async function load(){
+  document.getElementById('list').innerHTML='<div class="loading">Caricamento trasporti…</div>';
+  try{
+    // segnaposto anti-cache: forza il browser a chiedere dati freschi
+    const r=await fetch('/api/trasporti?_='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error('errore');
+    const data=await r.json();
+    ORIGIN=data.origine; TRASPORTI=data.trasporti||[]; DA_ORGANIZZARE=data.da_organizzare||[];
+    if(ORIGIN){
+      if(originMarker) map.removeLayer(originMarker); // evita duplicati
+      originMarker=L.marker([ORIGIN.lat,ORIGIN.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500})
+        .addTo(map).bindPopup('<b>'+ORIGIN.nome+'</b><br><span style="color:#5a6573;font-size:12px">Punto di partenza</span>');
+    }
+    // rimuovo i vecchi marker prima di ricostruirli
+    Object.values(markers).forEach(m=>map.removeLayer(m));
+    buildMarkers(); render();
+  }catch(e){
+    document.getElementById('list').innerHTML='<div class="empty">Impossibile caricare i trasporti.<br>Riprova con il pulsante Aggiorna.</div>';
+  }
+}
+
+function pinIcon(t,big){
+  const cls = t.tipo
+    + (big?' big':'')
+    + ((t.anomalie&&t.anomalie.length)?' warn':'')
+    + (t.geo==='approssimativo'?' approx':'');
+  return L.divIcon({className:'',html:'<div class="pin '+cls+'">'+ICON[t.tipo]+'</div>',
+    iconSize:big?[40,40]:[30,30],iconAnchor:big?[20,40]:[15,30],popupAnchor:[0,big?-38:-28]});
+}
+function navUrl(t){
+  const dest=[t.indirizzo,t.cap,t.citta,t.prov].filter(Boolean).join(', ');
+  let u='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(dest);
+  if(ORIGIN) u+='&origin='+ORIGIN.lat+','+ORIGIN.lng;
+  return u;
+}
+function flagsHtml(t){
+  if(!t.anomalie||!t.anomalie.length) return '';
+  let h='<div class="flags">';
+  t.anomalie.forEach(a=>{
+    const crit = /non riconosciuto|non localizzato|mancante|approssimativa/i.test(a);
+    h+='<div class="flag'+(crit?' crit':'')+'"><span class="ic">⚠</span><span>'+esc(a)+'</span></div>';
+  });
+  return h+'</div>';
+}
+function motoModello(t){
+  // "Marca Modello" se presenti
+  return [t.marca,t.modello].filter(Boolean).join(' ');
+}
+function popupHtml(t){
+  const cli=[t.cliente,t.telefono].filter(Boolean).join(' · ');
+  const mod=motoModello(t);
+  const avBlocco=[];
+  if(t.autista) avBlocco.push('<span class="plbl">Autista:</span> '+esc(t.autista));
+  if(t.veicolo) avBlocco.push('<span class="plbl">Veicolo:</span> '+esc(t.veicolo));
+  return '<div class="popup-card t-'+t.tipo+'">'+
+    '<div class="pbadge">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+'</div>'+
+    '<h4>'+esc(t.titolo)+'</h4>'+
+    '<p>'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+
+    (cli?'<br>'+esc(cli):'')+
+    (t.targa?'<br><span class="plbl">Targa:</span> '+esc(t.targa):'')+
+    (mod?'<br><span class="plbl">Moto:</span> '+esc(mod):'')+
+    (t.km_showroom!=null?'<br><span class="plbl">Distanza:</span> ~'+t.km_showroom+' km dallo showroom':'')+
+    '</p>'+
+    (avBlocco.length?'<div class="popup-av">'+avBlocco.join('<br>')+'</div>':'')+
+    (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+    flagsHtml(t)+
+    '<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a></div>';
+}
+function buildMarkers(){
+  markers={};
+  TRASPORTI.forEach(t=>{
+    if(t.lat==null||t.lng==null) return;
+    const m=L.marker([t.lat,t.lng],{icon:pinIcon(t,false)}).bindPopup(popupHtml(t));
+    m.on('click',()=>selectCard(t.id,false));
+    markers[t.id]=m;
+  });
+}
+function fmtDate(d){ if(!d)return ''; const dt=new Date(d); if(isNaN(dt))return ''; const g=String(dt.getDate()).padStart(2,'0'),m=String(dt.getMonth()+1).padStart(2,'0'); return g+'/'+m; }
+function fmtOra(d){
+  if(!d)return '';
+  const dt=new Date(d); if(isNaN(dt))return '';
+  // orario in fuso orario italiano (le date HubSpot arrivano in UTC)
+  try{
+    return dt.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Rome'});
+  }catch(e){
+    const h=String(dt.getHours()).padStart(2,'0'),mi=String(dt.getMinutes()).padStart(2,'0');
+    return h+':'+mi;
+  }
+}
+function fmtDateLong(d){
+  const dt=new Date(d); if(isNaN(dt))return 'Senza data';
+  const gg=['domenica','lunedì','martedì','mercoledì','giovedì','venerdì','sabato'];
+  const mm=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  return gg[dt.getDay()]+' '+String(dt.getDate()).padStart(2,'0')+' '+mm[dt.getMonth()];
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function visible(){
+  return TRASPORTI.filter(t=>
+    (state.type==='all'||t.tipo===state.type) &&
+    (state.date===''|| (t.data && t.data.slice(0,10)===state.date))
+  ).sort((a,b)=>String(a.data||'').localeCompare(String(b.data||'')));
+}
+function render(){
+  const items=visible();
+  document.getElementById('stat-count').textContent=items.length;
+  document.getElementById('stat-label').textContent=items.length===1?'trasporto visibile':'trasporti visibili';
+  Object.entries(markers).forEach(([id,m])=>{ if(items.find(t=>String(t.id)===String(id))) m.addTo(map); else map.removeLayer(m); });
+  const list=document.getElementById('list');
+  if(!items.length){ list.innerHTML='<div class="empty">Nessun trasporto per i filtri scelti.</div>'; return; }
+
+  // banner riepilogo anomalie (sui trasporti attualmente visibili)
+  const nAnom=items.filter(t=>t.anomalie&&t.anomalie.length).length;
+  let html='';
+  if(nAnom>0){
+    html+='<div class="anomaly-banner"><span class="ic">⚠</span><span><b>'+nAnom+'</b> '+
+      (nAnom===1?'trasporto con dati da verificare':'trasporti con dati da verificare')+'</span></div>';
+  }
+
+  let last='';
+  items.forEach(t=>{
+    const dkey=t.data?t.data.slice(0,10):'nodate';
+    if(dkey!==last){ html+='<div class="list-head" style="padding-left:6px">'+fmtDateLong(t.data)+'</div>'; last=dkey; }
+    const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+    const nonLoc = (t.lat==null||t.lng==null);
+    const critico = t.anomalie && t.anomalie.some(a=>/mancante|non riconosciuto|non localizzato/i.test(a));
+    // messaggio del tag differenziato per il caso reale
+    let nogeoMsg='';
+    if(nonLoc){
+      if(t.geo==='assente') nogeoMsg='📍 Indirizzo '+(t.tipo==='ritiro'?'di ritiro':'di consegna')+' mancante: inserirlo su HubSpot';
+      else nogeoMsg='📍 Indirizzo non riconosciuto: verificare su HubSpot';
+    }
+    html+='<div class="card t-'+t.tipo+(nonLoc?' nogeo':'')+(critico?' crit':'')+(selected===t.id?' sel':'')+'" data-id="'+esc(t.id)+'">'+
+      (t.data?'<span class="when">'+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+'</span>':'')+
+      '<span class="badge">'+ICON[t.tipo]+(t.tipo==='consegna'?'Consegna':'Ritiro')+'</span>'+
+      '<h3>'+esc(t.titolo)+'</h3>'+
+      '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+      (nonLoc?'<div class="nogeo-tag">'+nogeoMsg+'</div>':'')+
+      (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':(t.targa?'<div class="cli">Targa '+esc(t.targa)+'</div>':''))+
+      (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
+      (t.km_showroom!=null?'<div class="km-tag"><i class="km-ic">📍</i> ~'+t.km_showroom+' km dallo showroom</div>':'')+
+      ((t.autista||t.veicolo)?'<div class="meta">'+
+        (t.autista?'<div>Autista:<b>'+esc(t.autista)+'</b></div>':'')+
+        (t.veicolo?'<div>Veicolo:<b>'+esc(t.veicolo)+'</b></div>':'')+'</div>':'')+
+      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      flagsHtml(t)+
+      '<div class="card-actions">'+
+        (t.lat!=null?'<a class="act-nav" href="'+navUrl(t)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+NAV+' Naviga</a>':'')+
+        (t.telefono?'<a class="act-call" href="tel:'+esc(t.telefono)+'" onclick="event.stopPropagation()">'+CALL+' Chiama</a>':'<a class="act-call disabled">'+CALL+' No tel.</a>')+
+      '</div>'+
+      '</div>';
+  });
+  list.innerHTML=html;
+  list.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>selectCard(c.dataset.id,true)));
+}
+let plannerState={date:'', veicolo:null};
+
+// distanza approssimata in km tra due punti (formula di Haversine).
+// E' la distanza "in linea d'aria": una stima. Il calcolo su strada
+// reale verra' aggiunto con il servizio di routing.
+function distanzaKm(a,b){
+  if(a.lat==null||b.lat==null) return 0;
+  const R=6371, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return Math.round(2*R*Math.asin(Math.sqrt(s)));
+}
+
+const SLOT_FURGONE=3;
+
+// Costruisce il giro per una lista di trasporti partendo dall'origine.
+// Regola: a ogni passo sceglie la tappa piu' vicina TRA QUELLE AMMESSE
+// dal vincolo dei posti. Una consegna richiede di avere a bordo una moto
+// (un posto occupato da liberare); un ritiro richiede un posto libero.
+// All'avvio si presume che le moto da consegnare siano gia' caricate.
+function costruisciGiro(lista, origine){
+  const consegne=lista.filter(t=>t.tipo==='consegna');
+  const ritiri=lista.filter(t=>t.tipo==='ritiro');
+  // carico iniziale = numero di consegne (moto gia' a bordo alla partenza),
+  // ma non puo' superare la capienza del furgone
+  let carico=Math.min(consegne.length, SLOT_FURGONE);
+  let resto=[...lista];
+  let pos=origine;
+  const giro=[];
+  let kmTot=0;
+  let warn=false; // segnala se il vincolo non e' pienamente rispettabile
+
+  while(resto.length){
+    // tappe ammesse dato il carico attuale
+    let ammesse=resto.filter(t=>{
+      if(t.tipo==='consegna') return carico>0;      // serve una moto a bordo
+      if(t.tipo==='ritiro')   return carico<SLOT_FURGONE; // serve un posto libero
+      return true;
+    });
+    // se nessuna e' ammessa (vincolo bloccato), prendo comunque la piu' vicina
+    if(!ammesse.length){ ammesse=resto; warn=true; }
+    // scelgo la piu' vicina tra le ammesse (con coordinate)
+    ammesse.sort((a,b)=>distanzaKm(pos,a)-distanzaKm(pos,b));
+    const next=ammesse[0];
+    const km=distanzaKm(pos,next);
+    kmTot+=km;
+    // aggiorno il carico
+    if(next.tipo==='consegna') carico=Math.max(0,carico-1);
+    else if(next.tipo==='ritiro') carico=Math.min(SLOT_FURGONE,carico+1);
+    giro.push({...next, km, caricoDopo:carico});
+    pos=next;
+    resto=resto.filter(t=>t!==next);
+  }
+  // rientro all'origine
+  const kmRientro=giro.length?distanzaKm(pos,origine):0;
+  kmTot+=kmRientro;
+  return {giro, kmTot, kmRientro, caricoIniziale:Math.min(consegne.length,SLOT_FURGONE), warn, nConsegne:consegne.length, nRitiri:ritiri.length};
+}
+
+function plannerSlots(carico){
+  let h='<div style="display:inline-flex; gap:3px; vertical-align:middle;">';
+  for(let i=0;i<SLOT_FURGONE;i++){
+    const on=i<carico;
+    h+='<span style="width:14px;height:20px;border-radius:3px;border:1.5px solid '+(on?'#534AB7':'var(--line)')+';background:'+(on?'#CECBF6':'transparent')+';display:inline-block;"></span>';
+  }
+  return h+'</div>';
+}
+
+function renderOrganizzare(){
+  const el=document.getElementById('organizzare');
+  if(!el) return;
+  const lista=DA_ORGANIZZARE||[];
+
+  let html='<h2>Da organizzare</h2>'+
+    '<div class="sub">Trasporti a nostro carico con indirizzo, in attesa di una data. Assegna una data su HubSpot per calendarizzarli.</div>';
+
+  if(!lista.length){
+    html+='<div class="soon">Nessun trasporto in attesa di data. Tutto organizzato! 🎉</div>';
+    el.innerHTML=html; return;
+  }
+
+  html+='<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;"><b>'+lista.length+'</b> '+(lista.length===1?'trasporto da organizzare':'trasporti da organizzare')+'</div>';
+
+  // ordino per distanza dallo showroom (i piu' vicini prima)
+  const ord=[...lista].sort((a,b)=>(a.km_showroom??99999)-(b.km_showroom??99999));
+
+  html+='<div class="org-list">';
+  ord.forEach(t=>{
+    const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+    const col=t.tipo==='consegna'?{f:'#e7f0fe',c:'#15489c',l:'Consegna'}:{f:'#fbf0e1',c:'#9a5a13',l:'Ritiro'};
+    html+='<div class="org-card">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+        '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 8px;border-radius:5px;">'+col.l+'</span>'+
+        (t.km_showroom!=null?'<span style="font-size:12px;color:var(--ink-soft);">📍 ~'+t.km_showroom+' km</span>':'')+
+      '</div>'+
+      '<h3>'+esc(t.titolo)+'</h3>'+
+      '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+      (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':'')+
+      (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
+      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      flagsHtml(t)+
+      '</div>';
+  });
+  html+='</div>';
+
+  el.innerHTML=html;
+}
+
+function renderPlanner(){
+  const el=document.getElementById('planner');
+  if(!el) return;
+
+  // giorni disponibili dai trasporti (con data)
+  const giorni=[...new Set(TRASPORTI.filter(t=>t.data).map(t=>t.data.slice(0,10)))].sort();
+  if(!plannerState.date){
+    // default: oggi se presente, altrimenti il primo giorno disponibile
+    const oggi=new Date().toISOString().slice(0,10);
+    plannerState.date = giorni.includes(oggi)?oggi:(giorni[0]||oggi);
+  }
+
+  // trasporti del giorno scelto, raggruppati per veicolo
+  const delGiorno=TRASPORTI.filter(t=>t.data&&t.data.slice(0,10)===plannerState.date);
+  const veicoli=[...new Set(delGiorno.map(t=>t.veicolo||'(nessun veicolo)'))].sort();
+  if(!plannerState.veicolo||!veicoli.includes(plannerState.veicolo)){
+    plannerState.veicolo=veicoli[0]||null;
+  }
+
+  let html='<h2>Pianificatore viaggio</h2>'+
+    '<div class="sub">Giro ottimizzato per furgone, nel rispetto dei '+SLOT_FURGONE+' posti moto. Le distanze sono approssimative.</div>';
+
+  // selettore giorno
+  html+='<div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">'+
+    '<label style="font-size:13px; color:var(--ink-soft); font-weight:600;">Giorno</label>'+
+    '<input type="date" id="planner-date" value="'+plannerState.date+'" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;">'+
+    '</div>';
+
+  if(!delGiorno.length){
+    html+='<div class="soon">Nessun trasporto programmato per questa data.</div>';
+    el.innerHTML=html; agganciaPlanner(giorni); return;
+  }
+
+  // selettore veicolo (chip)
+  html+='<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">';
+  veicoli.forEach(v=>{
+    const att=v===plannerState.veicolo;
+    html+='<button class="veh-chip" data-v="'+esc(v)+'" style="border:1px solid '+(att?'var(--focus)':'var(--line)')+';background:'+(att?'#e7f0fe':'var(--panel)')+';color:'+(att?'#15489c':'var(--ink-soft)')+';border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;">'+esc(v)+'</button>';
+  });
+  html+='</div>';
+
+  // costruisco il giro per il veicolo selezionato
+  const lista=delGiorno.filter(t=>(t.veicolo||'(nessun veicolo)')===plannerState.veicolo && t.lat!=null);
+  const senzaGeo=delGiorno.filter(t=>(t.veicolo||'(nessun veicolo)')===plannerState.veicolo && t.lat==null);
+
+  if(!lista.length){
+    html+='<div class="soon">Nessuna tappa geolocalizzabile per questo veicolo in questa data.</div>';
+    el.innerHTML=html; agganciaPlanner(giorni); return;
+  }
+
+  const origine={lat:ORIGIN.lat,lng:ORIGIN.lng,nome:ORIGIN.nome};
+  const R=costruisciGiro(lista, origine);
+
+  // riepilogo
+  html+='<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;">'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">Tappe</div><div style="font-size:20px;font-weight:600;">'+R.giro.length+'</div></div>'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">Km (~aria)</div><div style="font-size:20px;font-weight:600;">'+R.kmTot+'</div></div>'+
+    '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;"><div style="font-size:12px;color:var(--ink-soft);">C/R</div><div style="font-size:20px;font-weight:600;">'+R.nConsegne+'/'+R.nRitiri+'</div></div>'+
+    '</div>';
+
+  if(R.warn){
+    html+='<div style="background:#fff7e6;color:#8a5a00;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px;line-height:1.5;">⚠ Con queste tappe il furgone potrebbe superare i '+SLOT_FURGONE+' posti in qualche momento: verificare l\'ordine manualmente.</div>';
+  }
+
+  // partenza
+  html+='<div style="display:flex;gap:12px;">'+
+    '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;">●</span></div><div style="width:2px;flex:1;background:var(--line);min-height:16px;"></div></div>'+
+    '<div style="padding-bottom:16px;"><div style="font-size:13px;font-weight:600;">'+esc(ORIGIN.nome)+'</div>'+
+    '<div style="font-size:12px;color:var(--ink-soft);">Partenza · '+plannerSlots(R.caricoIniziale)+' <span style="vertical-align:middle;">'+R.caricoIniziale+' moto a bordo</span></div></div>'+
+    '</div>';
+
+  // tappe
+  R.giro.forEach((t,i)=>{
+    const isCons=t.tipo==='consegna';
+    const col=isCons?{f:'#e7f0fe',c:'#15489c',l:'Consegna'}:{f:'#fbf0e1',c:'#9a5a13',l:'Ritiro'};
+    html+='<div style="display:flex;gap:12px;">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:'+col.f+';color:'+col.c+';display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">'+(i+1)+'</div><div style="width:2px;flex:1;background:var(--line);min-height:16px;"></div></div>'+
+      '<div style="padding-bottom:16px;flex:1;">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 7px;border-radius:5px;">'+col.l+'</span>'+
+          '<span style="font-size:12px;color:var(--ink-soft);">'+(fmtOra(t.data)?'🕐 '+fmtOra(t.data)+' · ':'')+'~'+t.km+' km</span></div>'+
+        '<div style="font-size:14px;font-weight:600;margin-top:5px;">'+esc(t.titolo||t.cliente||'Tappa')+'</div>'+
+        '<div style="font-size:12.5px;color:var(--ink-soft);margin-top:1px;">'+esc([t.indirizzo,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+        (motoModello(t)?'<div style="font-size:12.5px;margin-top:2px;">'+esc(motoModello(t))+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
+        '<div style="font-size:12px;color:var(--ink-soft);margin-top:8px;">'+plannerSlots(t.caricoDopo)+' <span style="vertical-align:middle;">'+(isCons?'consegnata, libera 1 posto':'ritirata, occupa 1 posto')+' → '+t.caricoDopo+'/3</span></div>'+
+      '</div></div>';
+  });
+
+  // rientro
+  html+='<div style="display:flex;gap:12px;">'+
+    '<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;"><span style="font-size:14px;">◉</span></div></div>'+
+    '<div><div style="font-size:13px;font-weight:600;">Rientro Showroom</div>'+
+    '<div style="font-size:12px;color:var(--ink-soft);">~'+R.kmRientro+' km</div></div>'+
+    '</div>';
+
+  if(senzaGeo.length){
+    html+='<div style="margin-top:14px;background:#fdecea;color:#a8200f;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.5;">📍 '+senzaGeo.length+' tappa/e con indirizzo mancante o non riconosciuto non sono nel giro: sistemare su HubSpot.</div>';
+  }
+
+  el.innerHTML=html;
+  agganciaPlanner(giorni);
+  disegnaPercorsoPlanner(R.giro, origine);
+}
+
+let plannerLayer=null;
+function disegnaPercorsoPlanner(giro, origine){
+  if(!map) return;
+  // pulisco il layer precedente
+  if(plannerLayer){ map.removeLayer(plannerLayer); plannerLayer=null; }
+  plannerLayer=L.layerGroup().addTo(map);
+
+  // sequenza di punti: origine -> tappe -> origine
+  const punti=[[origine.lat,origine.lng]];
+  giro.forEach(t=>{ if(t.lat!=null) punti.push([t.lat,t.lng]); });
+  punti.push([origine.lat,origine.lng]);
+
+  // linea diretta del percorso (tratteggiata)
+  L.polyline(punti,{color:'#534AB7',weight:3,opacity:.7,dashArray:'8,6'}).addTo(plannerLayer);
+
+  // marker origine (showroom)
+  L.marker([origine.lat,origine.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500}).addTo(plannerLayer)
+    .bindPopup('<b>'+esc(origine.nome||'Showroom')+'</b><br><span style="color:#5a6573;font-size:12px">Partenza e rientro</span>');
+
+  // marker numerati delle tappe
+  giro.forEach((t,i)=>{
+    if(t.lat==null) return;
+    const isCons=t.tipo==='consegna';
+    const col=isCons?'#1f6feb':'#e0892a';
+    const icon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+col+';border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);color:#fff;font-size:13px;font-weight:700;">'+(i+1)+'</span></div>',iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
+    L.marker([t.lat,t.lng],{icon}).addTo(plannerLayer)
+      .bindPopup('<b>'+(i+1)+'. '+esc(t.titolo||t.cliente||'Tappa')+'</b><br><span style="font-size:12px;color:#5a6573;">'+(isCons?'Consegna':'Ritiro')+' · ~'+t.km+' km</span>');
+  });
+
+  // inquadro il percorso
+  setTimeout(()=>{
+    map.invalidateSize();
+    try{ map.fitBounds(L.latLngBounds(punti).pad(0.15)); }catch(e){}
+  },150);
+}
+
+function agganciaPlanner(){
+  const d=document.getElementById('planner-date');
+  if(d) d.addEventListener('change',e=>{plannerState.date=e.target.value;plannerState.veicolo=null;renderPlanner();});
+  document.querySelectorAll('.veh-chip').forEach(b=>b.addEventListener('click',()=>{plannerState.veicolo=b.dataset.v;renderPlanner();}));
+}
+
+function selectCard(id,fromList){
+  selected=id;
+  const t=TRASPORTI.find(x=>String(x.id)===String(id));
+  Object.entries(markers).forEach(([mid,m])=>{const tt=TRASPORTI.find(x=>String(x.id)===String(mid));if(tt)m.setIcon(pinIcon(tt,false));});
+  if(t && markers[id]){ markers[id].setIcon(pinIcon(t,true)); if(t.lat!=null){map.flyTo([t.lat,t.lng],11,{duration:.6}); markers[id].openPopup();} }
+  render();
+  if(!fromList){ setTimeout(()=>{const el=document.querySelector('.card[data-id="'+id+'"]');if(el)el.scrollIntoView({block:'center',behavior:'smooth'});},50); }
+}
+</script>
+</body>
+</html>
