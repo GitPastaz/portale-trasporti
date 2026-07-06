@@ -48,7 +48,21 @@ const F = {
   veicolo: "veicolo_del_trasporto",
   autista: "autista_del_trasporto",
   note: "note_trasporto",
+  // Coordinate salvate (per non richiamare Nominatim ogni volta)
+  lat: "latitudine",
+  lng: "longitudine",
+  geoAddr: "indirizzo_geocodificato", // impronta dell'indirizzo geocodificato
 };
+
+// Fasi (dealstage) del Conto Esposizione in cui il trasporto e' gia'
+// avvenuto o la trattativa e' chiusa/persa: vanno escluse da "Da organizzare"
+// (sono lo storico pre-portale). La pipeline Vendita non ha intrusi.
+const FASI_CE_ESCLUSE = [
+  "3295795415", "5172594909", "5172594910", "4168541370", "5172594911",
+  "4168541371", "1517507814", "1491411157", "5427280106", "1491411158",
+  "5583540423", "4858382557", "2259898613", "2152219896", "1491589319",
+  "5634262221", "1910224069",
+];
 
 // Endpoint HubSpot. Gli account europei (token pat-eu1-...) devono usare
 // api-eu1.hubapi.com, altrimenti la richiesta arriva al data center USA
@@ -75,7 +89,36 @@ function kmAria(lat1, lng1, lat2, lng2) {
   return Math.round(2 * R * Math.asin(Math.sqrt(s)));
 }
 
-// Geocoding di una singola query. Restituisce {lat,lng} o null.
+// Impronta dell'indirizzo: stringa normalizzata usata per capire se
+// l'indirizzo e' cambiato rispetto a quando furono salvate le coordinate.
+function improntaIndirizzo(t) {
+  return [t.indirizzo, t.cap, t.citta, t.prov]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .join("|");
+}
+
+// Salva coordinate + impronta indirizzo sulla trattativa HubSpot (PATCH).
+// Non blocca il flusso: se fallisce, semplicemente non salva (riprovera').
+async function salvaCoordinate(id, lat, lng, impronta, token) {
+  try {
+    await hs("/crm/v3/objects/deals/" + id, token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        properties: {
+          latitudine: String(lat),
+          longitudine: String(lng),
+          indirizzo_geocodificato: impronta,
+        },
+      }),
+    });
+  } catch (e) {}
+}
+
+// Geocoding di una singola query.
+// Restituisce {lat,lng} se trovato, null se NON trovato,
+// oppure {errore:true} se il servizio non ha risposto (timeout/rete):
+// distinzione essenziale per non marcare come "errato" un indirizzo valido
+// quando Nominatim e' solo momentaneamente non disponibile.
 async function geocodeRaw(query) {
   if (!query) return null;
   const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=it&q=" +
@@ -88,51 +131,59 @@ async function geocodeRaw(query) {
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    if (!r.ok) return null;
+    if (!r.ok) return { errore: true }; // servizio non disponibile ora
     const data = await r.json();
     if (data && data.length) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
-  } catch (e) {}
-  return null;
+    return null; // risposta valida ma indirizzo non trovato
+  } catch (e) {
+    return { errore: true }; // timeout o errore di rete
+  }
 }
 
 // Geocoding "a cascata": prova dal piu' preciso al piu' approssimativo.
-// Restituisce { lat, lng, precisione } dove precisione e':
-//   "preciso"        -> trovato con via + civico
-//   "approssimativo" -> trovato solo con citta'/CAP (posizione indicativa)
-//   null             -> non trovato affatto
+// Restituisce { lat, lng, precisione } se trovato,
+//   { errore:true } se il servizio non ha risposto (non marcare come errato),
+//   null se davvero non trovato.
 async function geocodeCascata(t) {
   const via = (t.indirizzo || "").trim();
   const citta = (t.citta || "").trim();
   const cap = (t.cap || "").trim();
   const prov = (t.prov || "").trim();
+  let servizioKO = false;
+
+  const prova = async (q, precisione) => {
+    const r = await geocodeRaw(q);
+    if (r && r.errore) { servizioKO = true; return null; }
+    if (r) return { ...r, precisione };
+    return null;
+  };
 
   // Livello 1: indirizzo completo (via + cap + citta + prov)
   if (via && (citta || cap)) {
-    const q1 = [via, cap, citta, prov].filter(Boolean).join(", ");
-    const r1 = await geocodeRaw(q1);
-    if (r1) return { ...r1, precisione: "preciso" };
-
-    // Livello 2: via + citta (senza cap, a volte il cap confonde)
+    const r1 = await prova([via, cap, citta, prov].filter(Boolean).join(", "), "preciso");
+    if (r1) return r1;
+    // Livello 2: via + citta (senza cap)
     if (via && citta) {
-      const r2 = await geocodeRaw([via, citta, prov].filter(Boolean).join(", "));
-      if (r2) return { ...r2, precisione: "preciso" };
+      const r2 = await prova([via, citta, prov].filter(Boolean).join(", "), "preciso");
+      if (r2) return r2;
     }
   }
-
-  // Livello 3: citta + cap (posizione approssimativa, centro citta')
+  // Livello 3: citta + cap (approssimativo)
   if (citta || cap) {
-    const r3 = await geocodeRaw([cap, citta, prov].filter(Boolean).join(", "));
-    if (r3) return { ...r3, precisione: "approssimativo" };
+    const r3 = await prova([cap, citta, prov].filter(Boolean).join(", "), "approssimativo");
+    if (r3) return r3;
   }
-
   // Livello 4: solo citta'
   if (citta) {
-    const r4 = await geocodeRaw([citta, prov].filter(Boolean).join(", "));
-    if (r4) return { ...r4, precisione: "approssimativo" };
+    const r4 = await prova([citta, prov].filter(Boolean).join(", "), "approssimativo");
+    if (r4) return r4;
   }
 
+  // se almeno una chiamata e' fallita per il servizio, segnalo errore
+  // (non "non trovato"), cosi' non marchiamo un indirizzo valido come errato
+  if (servizioKO) return { errore: true };
   return null;
 }
 
@@ -195,7 +246,7 @@ module.exports = async (req, res) => {
     oggi.setHours(0, 0, 0, 0);
     const oggiMs = oggi.getTime();
 
-    const propsList = Object.values(F).concat(["dealname", "pipeline"]);
+    const propsList = Object.values(F).concat(["dealname", "pipeline", "dealstage"]);
 
     // Funzione che scarica le trattative di UNA ricerca, con paginazione
     async function scarica(filters) {
@@ -247,13 +298,28 @@ module.exports = async (req, res) => {
         { propertyName: F.modalitaRitiro, operator: "EQ", value: "Team Argento Factory Srl" },
         { propertyName: F.dataRitiro, operator: "NOT_HAS_PROPERTY" },
         { propertyName: F.indirizzoRitiro, operator: "HAS_PROPERTY" },
+        { propertyName: "dealstage", operator: "NOT_IN", values: FASI_CE_ESCLUSE },
       ]),
     ]);
 
     // 2) Costruisco la lista trasporti dai due gruppi gia' filtrati
     const trasporti = [];
+    // memorizzo le coordinate gia' salvate su HubSpot (per id trasporto),
+    // cosi' nel geocoding posso evitare di richiamare Nominatim
+    const salvate = {};
+    const registraSalvate = (d) => {
+      const p = d.properties || {};
+      const lat = parseFloat(p[F.lat]);
+      const lng = parseFloat(p[F.lng]);
+      salvate[d.id] = {
+        lat: isNaN(lat) ? null : lat,
+        lng: isNaN(lng) ? null : lng,
+        geoAddr: p[F.geoAddr] || "",
+      };
+    };
     for (const d of dealsVendita) {
       const p = d.properties || {};
+      registraSalvate(d);
       trasporti.push({
         tipo: "consegna",
         data: p[F.dataConsegna],
@@ -271,6 +337,7 @@ module.exports = async (req, res) => {
     }
     for (const d of dealsRitiro) {
       const p = d.properties || {};
+      registraSalvate(d);
       trasporti.push({
         tipo: "ritiro",
         data: p[F.dataRitiro],
@@ -292,6 +359,7 @@ module.exports = async (req, res) => {
     // (contatto, moto, geocoding) e poi li separo prima di rispondere.
     for (const d of dealsVenditaNoData) {
       const p = d.properties || {};
+      registraSalvate(d);
       trasporti.push({
         _daOrganizzare: true, tipo: "consegna", data: null,
         indirizzo: p[F.indirizzoConsegna], citta: p[F.cittaConsegna],
@@ -304,6 +372,7 @@ module.exports = async (req, res) => {
     }
     for (const d of dealsRitiroNoData) {
       const p = d.properties || {};
+      registraSalvate(d);
       trasporti.push({
         _daOrganizzare: true, tipo: "ritiro", data: null,
         indirizzo: p[F.indirizzoRitiro], citta: p[F.cittaRitiro],
@@ -355,11 +424,15 @@ module.exports = async (req, res) => {
       } catch (e) {}
     }));
 
-    // 4) Geocoding a cascata + calcolo anomalie su ogni trasporto.
-    const GEO_BUDGET = 25000; // ms massimi dedicati al geocoding
+    // 4) Coordinate + anomalie su ogni trasporto.
+    // Strategia: se le coordinate sono gia' salvate su HubSpot E l'indirizzo
+    // non e' cambiato, le uso SENZA chiamare Nominatim (veloce e stabile).
+    // Altrimenti calcolo, salvo su HubSpot, uso. Se Nominatim non risponde,
+    // NON marco l'indirizzo come errato (protezione anti-falso-allarme).
+    const GEO_BUDGET = 25000;
     const startGeo = Date.now();
-    await Promise.all(trasporti.map(async (t, i) => {
-      // anomalie sui campi (indipendenti dal geocoding)
+    let contatoreNuovi = 0; // quanti richiedono davvero Nominatim (per lo sfasamento)
+    await Promise.all(trasporti.map(async (t) => {
       t.anomalie = calcolaAnomalie(t);
 
       // se non c'e' nessun dato di luogo, non si puo' geolocalizzare
@@ -368,26 +441,61 @@ module.exports = async (req, res) => {
         return;
       }
 
-      await new Promise((r) => setTimeout(r, i * 200));
+      const impronta = improntaIndirizzo(t);
+      const sal = salvate[t.id];
+
+      // CASO A: coordinate gia' salvate e indirizzo invariato -> le uso
+      if (sal && sal.lat != null && sal.lng != null && sal.geoAddr && sal.geoAddr === impronta) {
+        t.lat = sal.lat;
+        t.lng = sal.lng;
+        t.geo = "preciso";
+        t.km_showroom = kmAria(origineOut.lat, origineOut.lng, sal.lat, sal.lng);
+        return;
+      }
+
+      // CASO B: coordinate mancanti o indirizzo cambiato -> ricalcolo.
+      // Sfaso solo le chiamate reali a Nominatim (non tutti i trasporti).
+      const mioTurno = contatoreNuovi++;
+      await new Promise((r) => setTimeout(r, mioTurno * 250));
       if (Date.now() - startGeo > GEO_BUDGET) {
-        t.geo = "non_processato"; // budget esaurito, riprovera' al refresh
+        // budget esaurito: se ho coordinate vecchie le uso comunque, altrimenti rimando
+        if (sal && sal.lat != null && sal.lng != null) {
+          t.lat = sal.lat; t.lng = sal.lng; t.geo = "preciso";
+          t.km_showroom = kmAria(origineOut.lat, origineOut.lng, sal.lat, sal.lng);
+        } else {
+          t.geo = "non_processato";
+        }
         return;
       }
 
       const pos = await geocodeCascata(t);
+
+      if (pos && pos.errore) {
+        // Nominatim non ha risposto: NON e' un errore dell'indirizzo.
+        // Se ho coordinate vecchie salvate, le uso; altrimenti segnalo
+        // "in aggiornamento" senza gridare all'errore.
+        if (sal && sal.lat != null && sal.lng != null) {
+          t.lat = sal.lat; t.lng = sal.lng; t.geo = "preciso";
+          t.km_showroom = kmAria(origineOut.lat, origineOut.lng, sal.lat, sal.lng);
+        } else {
+          t.geo = "non_processato";
+        }
+        return;
+      }
+
       if (pos) {
         t.lat = pos.lat;
         t.lng = pos.lng;
-        t.geo = pos.precisione; // "preciso" | "approssimativo"
-        // distanza approssimata dallo Showroom Moto Argento (Cesano Maderno)
+        t.geo = pos.precisione;
         t.km_showroom = kmAria(origineOut.lat, origineOut.lng, pos.lat, pos.lng);
         if (pos.precisione === "approssimativo") {
           t.anomalie.push("Posizione approssimativa: verificare indirizzo");
         }
+        // salvo le coordinate su HubSpot per le prossime volte (non blocca)
+        salvaCoordinate(t.id, pos.lat, pos.lng, impronta, TOKEN);
       } else {
+        // risposta valida ma indirizzo non riconosciuto: da verificare
         t.geo = "non_trovato";
-        // l'indirizzo c'e' ma non e' stato riconosciuto: va verificato,
-        // non e' un "errore" ma un dato da controllare/precisare
         t.anomalie.push("Indirizzo non riconosciuto: verificare su HubSpot");
       }
     }));
