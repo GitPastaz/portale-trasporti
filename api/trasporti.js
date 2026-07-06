@@ -139,9 +139,10 @@ async function geocodeCascata(t) {
 // Calcola la lista di anomalie (avvisi) per un trasporto.
 function calcolaAnomalie(t) {
   const a = [];
+  const dove = t.tipo === "ritiro" ? "di ritiro" : "di consegna";
   if (!t.autista) a.push("Autista non impostato");
   if (!t.veicolo) a.push("Veicolo non selezionato");
-  if (!t.indirizzo) a.push("Indirizzo mancante");
+  if (!t.indirizzo) a.push("Indirizzo " + dove + " mancante: inserirlo su HubSpot");
   if (!t.cap) a.push("CAP mancante");
   if (!t.prov) a.push("Provincia mancante");
   if (!t.citta) a.push("Citta' mancante");
@@ -223,7 +224,7 @@ module.exports = async (req, res) => {
     //    a) CONSEGNE a nostro carico, con data di consegna da oggi in poi
     //    b) RITIRI a nostro carico, con data di ritiro da oggi in poi
     //    Cosi' dei ~2000 record HubSpot ne restituisce solo una manciata.
-    const [dealsVendita, dealsRitiro] = await Promise.all([
+    const [dealsVendita, dealsRitiro, dealsVenditaNoData, dealsRitiroNoData] = await Promise.all([
       scarica([
         { propertyName: "pipeline", operator: "EQ", value: PIPELINE.VENDITA },
         { propertyName: F.modalitaConsegna, operator: "EQ", value: "Consegna a nostro Carico" },
@@ -233,6 +234,19 @@ module.exports = async (req, res) => {
         { propertyName: "pipeline", operator: "EQ", value: PIPELINE.CONTO_ESPOSIZIONE },
         { propertyName: F.modalitaRitiro, operator: "EQ", value: "Team Argento Factory Srl" },
         { propertyName: F.dataRitiro, operator: "GTE", value: String(oggiMs) },
+      ]),
+      // "Da organizzare": a nostro carico, SENZA data, ma con indirizzo compilato
+      scarica([
+        { propertyName: "pipeline", operator: "EQ", value: PIPELINE.VENDITA },
+        { propertyName: F.modalitaConsegna, operator: "EQ", value: "Consegna a nostro Carico" },
+        { propertyName: F.dataConsegna, operator: "NOT_HAS_PROPERTY" },
+        { propertyName: F.indirizzoConsegna, operator: "HAS_PROPERTY" },
+      ]),
+      scarica([
+        { propertyName: "pipeline", operator: "EQ", value: PIPELINE.CONTO_ESPOSIZIONE },
+        { propertyName: F.modalitaRitiro, operator: "EQ", value: "Team Argento Factory Srl" },
+        { propertyName: F.dataRitiro, operator: "NOT_HAS_PROPERTY" },
+        { propertyName: F.indirizzoRitiro, operator: "HAS_PROPERTY" },
       ]),
     ]);
 
@@ -269,6 +283,34 @@ module.exports = async (req, res) => {
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
         veicolo: p[F.veicolo] || "",
         note: p[F.note] || "",
+        cliente: "", telefono: "", targa: "", marca: "", modello: "",
+      });
+    }
+
+    // "Da organizzare": trasporti a nostro carico senza data, con indirizzo.
+    // Li aggiungo alla lista con un flag, cosi' passano per l'arricchimento
+    // (contatto, moto, geocoding) e poi li separo prima di rispondere.
+    for (const d of dealsVenditaNoData) {
+      const p = d.properties || {};
+      trasporti.push({
+        _daOrganizzare: true, tipo: "consegna", data: null,
+        indirizzo: p[F.indirizzoConsegna], citta: p[F.cittaConsegna],
+        cap: p[F.capConsegna], prov: siglaProvincia(p[F.provinciaConsegna]),
+        id: d.id, titolo: p.dealname || "Trasporto",
+        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
+        veicolo: p[F.veicolo] || "", note: p[F.note] || "",
+        cliente: "", telefono: "", targa: "", marca: "", modello: "",
+      });
+    }
+    for (const d of dealsRitiroNoData) {
+      const p = d.properties || {};
+      trasporti.push({
+        _daOrganizzare: true, tipo: "ritiro", data: null,
+        indirizzo: p[F.indirizzoRitiro], citta: p[F.cittaRitiro],
+        cap: p[F.capRitiro], prov: siglaProvincia(p[F.provinciaRitiro]),
+        id: d.id, titolo: p.dealname || "Trasporto",
+        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
+        veicolo: p[F.veicolo] || "", note: p[F.note] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -344,12 +386,18 @@ module.exports = async (req, res) => {
         }
       } else {
         t.geo = "non_trovato";
-        t.anomalie.push("Indirizzo non localizzato: correggere su HubSpot");
+        // l'indirizzo c'e' ma non e' stato riconosciuto: va verificato,
+        // non e' un "errore" ma un dato da controllare/precisare
+        t.anomalie.push("Indirizzo non riconosciuto: verificare su HubSpot");
       }
     }));
 
-    // riepilogo anomalie per il contatore in cima al portale
-    const conAnomalie = trasporti.filter((t) => t.anomalie && t.anomalie.length).length;
+    // Separo i due gruppi: datati (trasporti) e senza data (da_organizzare)
+    const datati = trasporti.filter((t) => !t._daOrganizzare);
+    const daOrganizzare = trasporti.filter((t) => t._daOrganizzare);
+
+    // riepilogo anomalie per il contatore in cima al portale (solo datati)
+    const conAnomalie = datati.filter((t) => t.anomalie && t.anomalie.length).length;
 
     // Cache breve lato CDN (30s) per assorbire clic ravvicinati di piu'
     // utenti, ma il browser non deve mai servire una copia vecchia: cosi'
@@ -357,8 +405,13 @@ module.exports = async (req, res) => {
     res.setHeader("Cache-Control", "no-store, max-age=0, s-maxage=30");
     return res.status(200).json({
       origine: origineOut,
-      trasporti,
-      riepilogo: { totale: trasporti.length, con_anomalie: conAnomalie },
+      trasporti: datati,
+      da_organizzare: daOrganizzare,
+      riepilogo: {
+        totale: datati.length,
+        con_anomalie: conAnomalie,
+        da_organizzare: daOrganizzare.length,
+      },
     });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
