@@ -146,12 +146,15 @@
   .cal-modal .nav-btn svg{width:16px;height:16px}
   /* su mobile la griglia calendario si adatta: celle piu' basse, testo piu' piccolo */
   @media (max-width:860px){
-    .cal-cell{min-height:70px;padding:4px}
-    .cal-num{width:20px;height:20px;font-size:11px}
-    .cal-ev{font-size:9px;padding:1px 3px}
-    .cal-dow{padding:6px 2px;font-size:10px}
+    .calendario{padding:12px 8px 24px}
+    .cal-grid{gap:1px}
+    .cal-cell{min-height:82px;padding:3px 2px;gap:2px}
+    .cal-num{width:18px;height:18px;font-size:10px}
+    .cal-ev{font-size:8.5px;padding:1px 3px;border-radius:3px;line-height:1.25}
+    .cal-dow{padding:5px 1px;font-size:9px}
     .cal-title{font-size:16px}
-    .cal-nav button{padding:6px 9px;font-size:12px}
+    .cal-nav button{padding:6px 8px;font-size:12px}
+    .cal-more{font-size:8.5px;padding:0 3px}
   }
   .plan-actions{display:flex;gap:8px;margin-top:12px}
   .plan-actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border-radius:10px;font-size:13.5px;font-weight:700;text-decoration:none}
@@ -244,6 +247,8 @@
 
   @media (max-width:860px){
     .view-switch{display:none}
+    /* su mobile "Da organizzare" non serve: resta solo su desktop */
+    #bottom-nav button[data-view="organizzare"]{display:none}
     .topbar{height:auto;flex-wrap:wrap;padding:10px 14px;gap:10px}
     .brand small{display:none}
     .bottom-nav{display:flex}
@@ -262,16 +267,19 @@
     body.view-list #planner, body.view-map #planner{display:none !important}
     /* su mobile planner e organizzare scorrono con la pagina, senza altezza
        fissa o overflow interno che li troncherebbe */
-    /* su mobile planner e organizzare: la sidebar scrolla internamente,
-       con altezza pari allo schermo meno topbar e barra inferiore.
-       I pannelli interni si espandono naturalmente (niente overflow proprio
-       che li troncherebbe o bloccherebbe lo scroll). */
+    /* su mobile planner e organizzare: la sidebar riempie lo spazio tra
+       topbar e barra inferiore e scrolla internamente. Uso flit:1 sul wrap
+       cosi' l'altezza e' quella reale disponibile, senza blocchi bianchi. */
     #planner, #organizzare{overflow:visible;height:auto;padding-bottom:24px}
-    body.view-planner .sidebar, body.view-organizzare .sidebar{
-      height:calc(100vh - 62px - 64px);
+    body.view-planner .wrap, body.view-organizzare .wrap, body.view-calendario .wrap{
+      height:calc(100vh - 62px);
+    }
+    body.view-planner .sidebar, body.view-organizzare .sidebar, body.view-calendario .sidebar{
+      flex:1;
+      height:auto;
       overflow-y:auto;
       -webkit-overflow-scrolling:touch;
-      padding-bottom:20px;
+      padding-bottom:80px;
     }
     /* vista Da organizzare (mobile) */
     body.view-organizzare .map-col{display:none}
@@ -284,7 +292,6 @@
     body.view-calendario #calendario{display:block !important}
     body.view-list #calendario, body.view-map #calendario, body.view-planner #calendario, body.view-organizzare #calendario{display:none !important}
     #calendario{overflow:visible;height:auto;padding-bottom:24px}
-    body.view-calendario .sidebar{height:calc(100vh - 62px - 64px);overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:20px}
     /* spazio in fondo per non finire sotto la barra */
     .list{padding:0 12px 16px}
     .card{padding:15px 16px;margin:8px 0}
@@ -318,7 +325,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.7.0</div>
+    <div class="version">v1.7.1</div>
   </div>
 </div>
 
@@ -447,7 +454,14 @@ function setView(v){
     }
   }
   if(v==='map' && map){
-    setTimeout(()=>{ map.invalidateSize(); render(); },120);
+    setTimeout(()=>{
+      map.invalidateSize();
+      // se la mappa era stata creata nascosta (mobile parte in Lista),
+      // lo zoom puo' essere sballato: se e' troppo lontano, la riporto
+      // sull'area di lavoro (Nord Italia / Lombardia)
+      if(map.getZoom() < 7){ map.setView([45.62, 9.30], 9); }
+      render();
+    },120);
   }
 }
 
@@ -750,6 +764,10 @@ function renderCalendario(){
     const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     (perGiorno[k]=perGiorno[k]||[]).push(t);
   });
+  // ordino i trasporti di ogni giorno per orario (dal primo all'ultimo)
+  Object.keys(perGiorno).forEach(k=>{
+    perGiorno[k].sort((a,b)=>new Date(a.data)-new Date(b.data));
+  });
 
   // intestazione con navigazione
   let html='<div class="cal-head">'+
@@ -791,7 +809,8 @@ function renderCalendario(){
     eventi.slice(0,MAX).forEach(t=>{
       const et=t.tipo==='consegna'?'consegna':'ritiro';
       const ora=fmtOra(t.data);
-      const label=(ora?ora+' ':'')+esc(t.cliente||t.titolo||'');
+      const nome=t.cliente||t.titolo||'';
+      const label=(ora?ora+' ':'')+esc(nome)+(t.prov?' ('+esc(t.prov)+')':'');
       html+='<div class="cal-ev '+et+'" data-id="'+esc(t.id)+'" title="'+esc(t.titolo||'')+'">'+label+'</div>';
     });
     if(eventi.length>MAX){
