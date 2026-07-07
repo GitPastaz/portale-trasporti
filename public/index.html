@@ -110,6 +110,49 @@
   .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
   .planner{padding:18px 16px 80px;overflow-y:auto;display:none}
   .organizzare{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .calendario{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px}
+  .cal-title{font-size:18px;font-weight:650;text-transform:capitalize}
+  .cal-nav{display:flex;gap:6px;align-items:center}
+  .cal-nav button{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:5px}
+  .cal-nav button:hover{background:var(--bg)}
+  .cal-nav .cal-today{color:var(--focus);border-color:var(--focus)}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .cal-dow{background:var(--bg);padding:8px 6px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft)}
+  .cal-cell{background:var(--panel);min-height:96px;padding:6px;display:flex;flex-direction:column;gap:3px}
+  .cal-cell.other{background:var(--bg);opacity:.5}
+  .cal-cell.today .cal-num{background:var(--focus);color:#fff}
+  .cal-num{font-size:12px;font-weight:600;color:var(--ink);width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;align-self:flex-start}
+  .cal-ev{font-size:10.5px;padding:2px 5px;border-radius:4px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;font-weight:600}
+  .cal-ev.consegna{background:#e7f0fe;color:#15489c}
+  .cal-ev.ritiro{background:#fbf0e1;color:#9a5a13}
+  .cal-ev:hover{filter:brightness(.95)}
+  .cal-more{font-size:10px;color:var(--ink-soft);font-weight:600;cursor:pointer;padding:1px 5px}
+  .cal-more:hover{color:var(--focus)}
+  .cal-modal-back{position:fixed;inset:0;background:rgba(16,22,29,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
+  .cal-modal{background:var(--panel);border-radius:14px;padding:20px;max-width:380px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  .cal-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .cal-modal-head .badge{font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 9px;border-radius:6px}
+  .cal-modal-head .badge.t-consegna{background:#e7f0fe;color:#15489c}
+  .cal-modal-head .badge.t-ritiro{background:#fbf0e1;color:#9a5a13}
+  .cal-modal-x{border:0;background:transparent;font-size:16px;cursor:pointer;color:var(--ink-soft);padding:4px 8px;border-radius:6px}
+  .cal-modal-x:hover{background:var(--bg)}
+  .cal-modal h3{font-size:16px;font-weight:650;margin-bottom:10px}
+  .cal-modal-row{font-size:13px;color:var(--ink);margin-bottom:6px;line-height:1.4}
+  .cal-modal-row b{color:var(--ink-soft);font-weight:600}
+  .cal-modal-row a{color:var(--focus);text-decoration:none}
+  .cal-modal .note{margin-top:8px;font-size:12.5px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:8px 10px;line-height:1.4}
+  .cal-modal .nav-btn{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;padding:11px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:600}
+  .cal-modal .nav-btn svg{width:16px;height:16px}
+  /* su mobile la griglia calendario si adatta: celle piu' basse, testo piu' piccolo */
+  @media (max-width:860px){
+    .cal-cell{min-height:70px;padding:4px}
+    .cal-num{width:20px;height:20px;font-size:11px}
+    .cal-ev{font-size:9px;padding:1px 3px}
+    .cal-dow{padding:6px 2px;font-size:10px}
+    .cal-title{font-size:16px}
+    .cal-nav button{padding:6px 9px;font-size:12px}
+  }
   .plan-actions{display:flex;gap:8px;margin-top:12px}
   .plan-actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border-radius:10px;font-size:13.5px;font-weight:700;text-decoration:none}
   .plan-actions a svg{width:16px;height:16px}
@@ -171,6 +214,14 @@
   body.view-organizzare .list, body.view-organizzare .filters, body.view-organizzare .list-head{display:none}
   body.view-organizzare #planner{display:none}
   body.view-organizzare #organizzare{display:block}
+  /* vista Calendario (desktop): a tutta larghezza, senza mappa */
+  body.view-calendario .sidebar{display:flex;flex:1;max-width:none}
+  body.view-calendario .map-col{display:none}
+  body.view-calendario .list, body.view-calendario .filters, body.view-calendario .list-head{display:none}
+  body.view-calendario #planner, body.view-calendario #organizzare{display:none}
+  body.view-calendario #calendario{display:block}
+  #calendario{display:none}
+  body.view-list #calendario, body.view-map #calendario, body.view-planner #calendario, body.view-organizzare #calendario{display:none}
   @media (min-width:861px){
     #organizzare .org-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
   }
@@ -211,13 +262,29 @@
     body.view-list #planner, body.view-map #planner{display:none !important}
     /* su mobile planner e organizzare scorrono con la pagina, senza altezza
        fissa o overflow interno che li troncherebbe */
-    #planner, #organizzare{overflow:visible;height:auto;padding-bottom:90px}
-    body.view-planner .sidebar, body.view-organizzare .sidebar{height:auto;overflow:visible;padding-bottom:0}
+    /* su mobile planner e organizzare: la sidebar scrolla internamente,
+       con altezza pari allo schermo meno topbar e barra inferiore.
+       I pannelli interni si espandono naturalmente (niente overflow proprio
+       che li troncherebbe o bloccherebbe lo scroll). */
+    #planner, #organizzare{overflow:visible;height:auto;padding-bottom:24px}
+    body.view-planner .sidebar, body.view-organizzare .sidebar{
+      height:calc(100vh - 62px - 64px);
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      padding-bottom:20px;
+    }
     /* vista Da organizzare (mobile) */
     body.view-organizzare .map-col{display:none}
     body.view-organizzare .list, body.view-organizzare .filters, body.view-organizzare .list-head{display:none}
     body.view-organizzare #organizzare{display:block !important}
-    body.view-list #organizzare, body.view-map #organizzare, body.view-planner #organizzare{display:none !important}
+    body.view-list #organizzare, body.view-map #organizzare, body.view-planner #organizzare, body.view-calendario #organizzare{display:none !important}
+    /* vista Calendario (mobile) */
+    body.view-calendario .map-col{display:none}
+    body.view-calendario .list, body.view-calendario .filters, body.view-calendario .list-head{display:none}
+    body.view-calendario #calendario{display:block !important}
+    body.view-list #calendario, body.view-map #calendario, body.view-planner #calendario, body.view-organizzare #calendario{display:none !important}
+    #calendario{overflow:visible;height:auto;padding-bottom:24px}
+    body.view-calendario .sidebar{height:calc(100vh - 62px - 64px);overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:20px}
     /* spazio in fondo per non finire sotto la barra */
     .list{padding:0 12px 16px}
     .card{padding:15px 16px;margin:8px 0}
@@ -251,7 +318,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.6.2</div>
+    <div class="version">v1.7.0</div>
   </div>
 </div>
 
@@ -261,6 +328,7 @@
   <div class="spacer"></div>
   <div class="view-switch" id="view-switch">
     <button data-view="map" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg><span>Mappa</span></button>
+    <button data-view="calendario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendario</span></button>
     <button data-view="organizzare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg><span>Da organizzare</span></button>
     <button data-view="planner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/><path d="m4.22 4.22 4.24 4.24m6.36 6.36 4.24 4.24"/><path d="M1 12h6m6 0h6"/><path d="m4.22 19.78 4.24-4.24m6.36-6.36 4.24-4.24"/></svg><span>Pianificatore</span></button>
   </div>
@@ -287,6 +355,7 @@
     <div class="list" id="list"><div class="loading">Caricamento…</div></div>
     <div class="planner" id="planner"></div>
     <div class="organizzare" id="organizzare"></div>
+    <div class="calendario" id="calendario"></div>
   </aside>
 
   <div class="map-col">
@@ -310,9 +379,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
     <span>Mappa</span>
   </button>
+  <button data-view="calendario">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <span>Agenda</span>
+  </button>
   <button data-view="organizzare">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
-    <span>Da organizzare</span>
+    <span>Organizza</span>
   </button>
   <button data-view="planner" id="nav-planner">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/><path d="m4.22 4.22 4.24 4.24m6.36 6.36 4.24 4.24"/><path d="M1 12h6m6 0h6"/><path d="m4.22 19.78 4.24-4.24m6.36-6.36 4.24-4.24"/></svg>
@@ -347,13 +420,14 @@ async function doLogin(){
 
 /* ---- APP ---- */
 function setView(v){
-  document.body.classList.remove('view-list','view-map','view-planner','view-organizzare');
+  document.body.classList.remove('view-list','view-map','view-planner','view-organizzare','view-calendario');
   document.body.classList.add('view-'+v);
   // sincronizzo lo stato attivo di entrambe le barre (mobile + desktop)
   document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
     x.classList.toggle('active', x.dataset.view===v);
   });
   if(v==='organizzare'){ renderOrganizzare(); }
+  if(v==='calendario'){ renderCalendario(); }
   if(v==='planner'){
     // nel pianificatore mostro SOLO il percorso del giro: nascondo i
     // marker normali e il pin origine, che verranno ridisegnati nel layer
@@ -422,6 +496,7 @@ async function load(tentativo){
     render();
     // se sono nella vista organizzare/pianificatore, aggiorno anche quelle
     if(document.body.classList.contains('view-organizzare')) renderOrganizzare();
+    if(document.body.classList.contains('view-calendario')) renderCalendario();
     if(document.body.classList.contains('view-planner')) renderPlanner();
   }catch(e){
     if(tentativo < MAX_TENTATIVI){
@@ -652,6 +727,171 @@ function plannerSlots(carico){
     h+='<span style="width:14px;height:20px;border-radius:3px;border:1.5px solid '+(on?'#534AB7':'var(--line)')+';background:'+(on?'#CECBF6':'transparent')+';display:inline-block;"></span>';
   }
   return h+'</div>';
+}
+
+let calState={anno:null, mese:null}; // mese: 0-11
+
+function renderCalendario(){
+  const el=document.getElementById('calendario');
+  if(!el) return;
+
+  const oggi=new Date();
+  if(calState.anno==null){ calState.anno=oggi.getFullYear(); calState.mese=oggi.getMonth(); }
+
+  const anno=calState.anno, mese=calState.mese;
+  const mesiNomi=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+
+  // raggruppo i trasporti datati per giorno (chiave AAAA-MM-GG)
+  const perGiorno={};
+  (TRASPORTI||[]).forEach(t=>{
+    if(!t.data) return;
+    const d=new Date(t.data);
+    if(isNaN(d)) return;
+    const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    (perGiorno[k]=perGiorno[k]||[]).push(t);
+  });
+
+  // intestazione con navigazione
+  let html='<div class="cal-head">'+
+    '<div class="cal-title">'+mesiNomi[mese]+' '+anno+'</div>'+
+    '<div class="cal-nav">'+
+      '<button id="cal-prev">‹ Prec.</button>'+
+      '<button class="cal-today" id="cal-oggi">Oggi</button>'+
+      '<button id="cal-next">Succ. ›</button>'+
+    '</div>'+
+  '</div>';
+
+  // griglia: intestazioni giorni (lun-dom)
+  html+='<div class="cal-grid">';
+  ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(g=>{ html+='<div class="cal-dow">'+g+'</div>'; });
+
+  // primo giorno del mese e allineamento (settimana lun-dom)
+  const primo=new Date(anno,mese,1);
+  let offset=(primo.getDay()+6)%7; // lun=0 ... dom=6
+  const giorniMese=new Date(anno,mese+1,0).getDate();
+  const giorniMesePrec=new Date(anno,mese,0).getDate();
+  const oggiK=oggi.getFullYear()+'-'+String(oggi.getMonth()+1).padStart(2,'0')+'-'+String(oggi.getDate()).padStart(2,'0');
+
+  // celle: 6 righe x 7 = 42 celle
+  for(let i=0;i<42;i++){
+    let giorno, mDelta, cls='';
+    if(i<offset){ giorno=giorniMesePrec-offset+1+i; mDelta=-1; cls='other'; }
+    else if(i<offset+giorniMese){ giorno=i-offset+1; mDelta=0; }
+    else { giorno=i-offset-giorniMese+1; mDelta=1; cls='other'; }
+
+    const dataCella=new Date(anno,mese+mDelta,giorno);
+    const k=dataCella.getFullYear()+'-'+String(dataCella.getMonth()+1).padStart(2,'0')+'-'+String(dataCella.getDate()).padStart(2,'0');
+    const eventi=perGiorno[k]||[];
+    if(k===oggiK) cls+=' today';
+
+    html+='<div class="cal-cell '+cls+'">';
+    html+='<span class="cal-num">'+giorno+'</span>';
+    // mostro fino a 3 eventi, poi "+N"
+    const MAX=3;
+    eventi.slice(0,MAX).forEach(t=>{
+      const et=t.tipo==='consegna'?'consegna':'ritiro';
+      const ora=fmtOra(t.data);
+      const label=(ora?ora+' ':'')+esc(t.cliente||t.titolo||'');
+      html+='<div class="cal-ev '+et+'" data-id="'+esc(t.id)+'" title="'+esc(t.titolo||'')+'">'+label+'</div>';
+    });
+    if(eventi.length>MAX){
+      html+='<div class="cal-more" data-day="'+k+'">+'+(eventi.length-MAX)+' altri</div>';
+    }
+    html+='</div>';
+  }
+  html+='</div>';
+
+  el.innerHTML=html;
+  agganciaCalendario(perGiorno);
+}
+
+function agganciaCalendario(perGiorno){
+  const prev=document.getElementById('cal-prev');
+  const next=document.getElementById('cal-next');
+  const oggiBtn=document.getElementById('cal-oggi');
+  if(prev) prev.addEventListener('click',()=>{
+    calState.mese--; if(calState.mese<0){calState.mese=11;calState.anno--;} renderCalendario();
+  });
+  if(next) next.addEventListener('click',()=>{
+    calState.mese++; if(calState.mese>11){calState.mese=0;calState.anno++;} renderCalendario();
+  });
+  if(oggiBtn) oggiBtn.addEventListener('click',()=>{
+    const o=new Date(); calState.anno=o.getFullYear(); calState.mese=o.getMonth(); renderCalendario();
+  });
+  // click su un evento: mostra i dettagli del trasporto
+  document.querySelectorAll('#calendario .cal-ev').forEach(ev=>{
+    ev.addEventListener('click',()=>{
+      const t=(TRASPORTI||[]).find(x=>String(x.id)===String(ev.dataset.id));
+      if(t) mostraDettaglioTrasporto(t);
+    });
+  });
+  // click su "+N altri": mostra tutti gli eventi del giorno
+  document.querySelectorAll('#calendario .cal-more').forEach(m=>{
+    m.addEventListener('click',()=>{
+      const giorno=m.dataset.day;
+      const eventi=perGiorno[giorno]||[];
+      mostraGiornoTrasporti(giorno, eventi);
+    });
+  });
+}
+
+// Mostra un pannello con i dettagli di un trasporto (riusa lo stile card)
+function mostraDettaglioTrasporto(t){
+  const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+  const mod=motoModello(t);
+  const html='<div class="cal-modal-back" id="cal-modal-back">'+
+    '<div class="cal-modal">'+
+      '<div class="cal-modal-head">'+
+        '<span class="badge t-'+t.tipo+'">'+(t.tipo==='consegna'?'Consegna':'Ritiro')+'</span>'+
+        '<button class="cal-modal-x" id="cal-modal-x">✕</button>'+
+      '</div>'+
+      '<h3>'+esc(t.titolo||'')+'</h3>'+
+      '<div class="cal-modal-row"><b>Data:</b> '+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+'</div>'+
+      '<div class="cal-modal-row">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+      (cli?'<div class="cal-modal-row">'+cli+'</div>':'')+
+      (mod?'<div class="cal-modal-row"><b>Moto:</b> '+esc(mod)+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
+      (t.autista?'<div class="cal-modal-row"><b>Autista:</b> '+esc(t.autista)+'</div>':'')+
+      (t.veicolo?'<div class="cal-modal-row"><b>Veicolo:</b> '+esc(t.veicolo)+'</div>':'')+
+      (t.km_showroom!=null?'<div class="cal-modal-row"><b>Distanza:</b> ~'+t.km_showroom+' km dallo showroom</div>':'')+
+      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      (t.lat!=null?'<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a>':'')+
+    '</div>'+
+  '</div>';
+  const div=document.createElement('div');
+  div.innerHTML=html;
+  document.body.appendChild(div.firstChild);
+  const back=document.getElementById('cal-modal-back');
+  const chiudi=()=>back&&back.remove();
+  document.getElementById('cal-modal-x').addEventListener('click',chiudi);
+  back.addEventListener('click',e=>{ if(e.target===back) chiudi(); });
+}
+
+function mostraGiornoTrasporti(giorno, eventi){
+  const d=new Date(giorno);
+  const titolo=d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
+  let lista='';
+  eventi.forEach(t=>{
+    const et=t.tipo==='consegna'?'consegna':'ritiro';
+    lista+='<div class="cal-ev '+et+'" data-id="'+esc(t.id)+'" style="margin-bottom:5px;white-space:normal;">'+
+      (fmtOra(t.data)?fmtOra(t.data)+' · ':'')+esc(t.cliente||t.titolo||'')+'</div>';
+  });
+  const html='<div class="cal-modal-back" id="cal-modal-back"><div class="cal-modal">'+
+    '<div class="cal-modal-head"><span style="font-weight:650;text-transform:capitalize;">'+esc(titolo)+'</span>'+
+    '<button class="cal-modal-x" id="cal-modal-x">✕</button></div>'+lista+'</div></div>';
+  const div=document.createElement('div');
+  div.innerHTML=html;
+  document.body.appendChild(div.firstChild);
+  const back=document.getElementById('cal-modal-back');
+  const chiudi=()=>back&&back.remove();
+  document.getElementById('cal-modal-x').addEventListener('click',chiudi);
+  back.addEventListener('click',e=>{ if(e.target===back) chiudi(); });
+  // gli eventi nel modal sono anch'essi cliccabili
+  back.querySelectorAll('.cal-ev').forEach(ev=>{
+    ev.addEventListener('click',()=>{
+      const t=(TRASPORTI||[]).find(x=>String(x.id)===String(ev.dataset.id));
+      if(t){ chiudi(); mostraDettaglioTrasporto(t); }
+    });
+  });
 }
 
 function renderOrganizzare(){
