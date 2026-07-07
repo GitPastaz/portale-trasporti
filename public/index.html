@@ -241,7 +241,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.6.0</div>
+    <div class="version">v1.6.1</div>
   </div>
 </div>
 
@@ -354,10 +354,17 @@ function setView(v){
   } else {
     // uscendo dal pianificatore: rimuovo il percorso e ripristino i marker
     if(plannerLayer&&map){ map.removeLayer(plannerLayer); plannerLayer=null; }
-    if(map){ render(); } // ridisegna i marker normali secondo i filtri
-    if(originMarker&&map) originMarker.addTo(map);
+    if(map){
+      // ridisegno origine + marker in base ai dati correnti, poi applico i filtri.
+      // cosi' se i pin non erano stati disegnati (es. primo caricamento fallito
+      // e poi riuscito), tornando sulla mappa compaiono comunque.
+      if(originMarker) originMarker.addTo(map);
+      render();
+    }
   }
-  if(v==='map' && map){ setTimeout(()=>{map.invalidateSize();},120); }
+  if(v==='map' && map){
+    setTimeout(()=>{ map.invalidateSize(); render(); },120);
+  }
 }
 
 function init(){
@@ -389,25 +396,45 @@ function init(){
 }
 
 let originMarker=null;
-async function load(){
-  document.getElementById('list').innerHTML='<div class="loading">Caricamento trasporti…</div>';
+async function load(tentativo){
+  tentativo = tentativo || 1;
+  const MAX_TENTATIVI = 3;
+  if(tentativo===1) document.getElementById('list').innerHTML='<div class="loading">Caricamento trasporti…</div>';
+  else document.getElementById('list').innerHTML='<div class="loading">Caricamento trasporti… (tentativo '+tentativo+')</div>';
   try{
     // segnaposto anti-cache: forza il browser a chiedere dati freschi
     const r=await fetch('/api/trasporti?_='+Date.now(),{cache:'no-store'});
-    if(!r.ok) throw new Error('errore');
+    if(!r.ok) throw new Error('http '+r.status);
     const data=await r.json();
+    if(data && data.error) throw new Error(data.error);
     ORIGIN=data.origine; TRASPORTI=data.trasporti||[]; DA_ORGANIZZARE=data.da_organizzare||[];
-    if(ORIGIN){
-      if(originMarker) map.removeLayer(originMarker); // evita duplicati
-      originMarker=L.marker([ORIGIN.lat,ORIGIN.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500})
-        .addTo(map).bindPopup('<b>'+ORIGIN.nome+'</b><br><span style="color:#5a6573;font-size:12px">Punto di partenza</span>');
-    }
-    // rimuovo i vecchi marker prima di ricostruirli
-    Object.values(markers).forEach(m=>map.removeLayer(m));
-    buildMarkers(); render();
+    disegnaTuttiIMarker();
+    render();
+    // se sono nella vista organizzare/pianificatore, aggiorno anche quelle
+    if(document.body.classList.contains('view-organizzare')) renderOrganizzare();
+    if(document.body.classList.contains('view-planner')) renderPlanner();
   }catch(e){
-    document.getElementById('list').innerHTML='<div class="empty">Impossibile caricare i trasporti.<br>Riprova con il pulsante Aggiorna.</div>';
+    if(tentativo < MAX_TENTATIVI){
+      // ritentativo automatico: il primo caricamento puo' fallire per
+      // timeout, ma i successivi sono rapidi (coordinate gia' salvate)
+      setTimeout(()=>load(tentativo+1), 1500);
+    }else{
+      document.getElementById('list').innerHTML='<div class="empty">Impossibile caricare i trasporti al momento.<br>Riprova tra qualche secondo con il pulsante Aggiorna.</div>';
+    }
   }
+}
+
+// Disegna origine + marker dei trasporti sulla mappa (idempotente:
+// rimuove i vecchi prima di ricostruire, cosi' e' sempre coerente).
+function disegnaTuttiIMarker(){
+  if(!map) return;
+  if(ORIGIN){
+    if(originMarker) map.removeLayer(originMarker);
+    originMarker=L.marker([ORIGIN.lat,ORIGIN.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500})
+      .addTo(map).bindPopup('<b>'+ORIGIN.nome+'</b><br><span style="color:#5a6573;font-size:12px">Punto di partenza</span>');
+  }
+  Object.values(markers).forEach(m=>map.removeLayer(m));
+  buildMarkers();
 }
 
 function pinIcon(t,big){
@@ -494,6 +521,11 @@ function visible(){
 }
 function render(){
   const items=visible();
+  // rete di sicurezza: se ho trasporti ma i marker non sono ancora stati
+  // costruiti (es. sequenza di caricamento anomala), li costruisco ora
+  if(map && TRASPORTI.length && Object.keys(markers).length===0){
+    disegnaTuttiIMarker();
+  }
   document.getElementById('stat-count').textContent=items.length;
   document.getElementById('stat-label').textContent=items.length===1?'trasporto visibile':'trasporti visibili';
   Object.entries(markers).forEach(([id,m])=>{ if(items.find(t=>String(t.id)===String(id))) m.addTo(map); else map.removeLayer(m); });
@@ -774,14 +806,36 @@ function disegnaPercorsoPlanner(giro, origine){
   L.marker([origine.lat,origine.lng],{icon:L.divIcon({className:'',html:'<div class="origin-pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:500}).addTo(plannerLayer)
     .bindPopup('<b>'+esc(origine.nome||'Showroom')+'</b><br><span style="color:#5a6573;font-size:12px">Partenza e rientro</span>');
 
-  // marker numerati delle tappe
+  // marker numerati delle tappe.
+  // Se piu' tappe hanno le STESSE coordinate (es. consegna + ritiro allo
+  // stesso indirizzo), i marker si sovrapporrebbero e uno coprirebbe l'altro:
+  // applico un piccolo scostamento "a ventaglio" per renderli tutti visibili.
+  const gruppiCoord={};
+  giro.forEach((t,i)=>{
+    if(t.lat==null) return;
+    const chiave=t.lat.toFixed(5)+','+t.lng.toFixed(5);
+    (gruppiCoord[chiave]=gruppiCoord[chiave]||[]).push(i);
+  });
+
   giro.forEach((t,i)=>{
     if(t.lat==null) return;
     const isCons=t.tipo==='consegna';
     const col=isCons?'#1f6feb':'#e0892a';
+    // calcolo lo scostamento se in questo punto ci sono piu' tappe
+    const chiave=t.lat.toFixed(5)+','+t.lng.toFixed(5);
+    const gruppo=gruppiCoord[chiave]||[i];
+    let lat=t.lat, lng=t.lng;
+    if(gruppo.length>1){
+      const pos=gruppo.indexOf(i);           // posizione in questo gruppo
+      const ang=(2*Math.PI*pos)/gruppo.length; // distribuiti in cerchio
+      const raggio=0.0016;                    // ~150 m, abbastanza per separarli
+      lat=t.lat+raggio*Math.cos(ang);
+      lng=t.lng+raggio*Math.sin(ang);
+    }
     const icon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+col+';border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);color:#fff;font-size:13px;font-weight:700;">'+(i+1)+'</span></div>',iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
-    L.marker([t.lat,t.lng],{icon}).addTo(plannerLayer)
-      .bindPopup('<b>'+(i+1)+'. '+esc(t.titolo||t.cliente||'Tappa')+'</b><br><span style="font-size:12px;color:#5a6573;">'+(isCons?'Consegna':'Ritiro')+' · ~'+t.km+' km</span>');
+    const nota=gruppo.length>1?'<br><span style="font-size:11px;color:#9a5a13;">⚠ stesso indirizzo di un\'altra tappa</span>':'';
+    L.marker([lat,lng],{icon}).addTo(plannerLayer)
+      .bindPopup('<b>'+(i+1)+'. '+esc(t.titolo||t.cliente||'Tappa')+'</b><br><span style="font-size:12px;color:#5a6573;">'+(isCons?'Consegna':'Ritiro')+' · ~'+t.km+' km</span>'+nota);
   });
 
   // inquadro il percorso

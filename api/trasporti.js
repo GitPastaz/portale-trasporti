@@ -429,9 +429,16 @@ module.exports = async (req, res) => {
     // non e' cambiato, le uso SENZA chiamare Nominatim (veloce e stabile).
     // Altrimenti calcolo, salvo su HubSpot, uso. Se Nominatim non risponde,
     // NON marco l'indirizzo come errato (protezione anti-falso-allarme).
-    const GEO_BUDGET = 25000;
+    //
+    // IMPORTANTE per la stabilita': per non far mai scadere il tempo di
+    // risposta, ogni singola chiamata geocodifica al massimo MAX_NUOVI
+    // indirizzi nuovi. Gli altri restano "in aggiornamento" e verranno
+    // completati ai caricamenti successivi (quando i primi sono gia' salvati
+    // e quindi non pesano piu'). In pochi refresh tutti hanno le coordinate.
+    const GEO_BUDGET = 15000;   // tetto di tempo prudente
+    const MAX_NUOVI = 8;        // max indirizzi nuovi geocodificati per chiamata
     const startGeo = Date.now();
-    let contatoreNuovi = 0; // quanti richiedono davvero Nominatim (per lo sfasamento)
+    let contatoreNuovi = 0;
     await Promise.all(trasporti.map(async (t) => {
       t.anomalie = calcolaAnomalie(t);
 
@@ -454,19 +461,22 @@ module.exports = async (req, res) => {
       }
 
       // CASO B: coordinate mancanti o indirizzo cambiato -> ricalcolo.
-      // Sfaso solo le chiamate reali a Nominatim (non tutti i trasporti).
       const mioTurno = contatoreNuovi++;
-      await new Promise((r) => setTimeout(r, mioTurno * 250));
-      if (Date.now() - startGeo > GEO_BUDGET) {
-        // budget esaurito: se ho coordinate vecchie le uso comunque, altrimenti rimando
+
+      // se ho gia' raggiunto il tetto di geocoding per questa chiamata,
+      // uso le coordinate vecchie se ci sono, altrimenti rimando al refresh
+      if (mioTurno >= MAX_NUOVI || Date.now() - startGeo > GEO_BUDGET) {
         if (sal && sal.lat != null && sal.lng != null) {
           t.lat = sal.lat; t.lng = sal.lng; t.geo = "preciso";
           t.km_showroom = kmAria(origineOut.lat, origineOut.lng, sal.lat, sal.lng);
         } else {
-          t.geo = "non_processato";
+          t.geo = "non_processato"; // verra' completato al prossimo caricamento
         }
         return;
       }
+
+      // sfaso le chiamate reali a Nominatim per rispettarne i limiti
+      await new Promise((r) => setTimeout(r, mioTurno * 250));
 
       const pos = await geocodeCascata(t);
 
