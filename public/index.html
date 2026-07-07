@@ -110,6 +110,12 @@
   .nogeo-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#a8200f;background:#fdecea;padding:3px 8px;border-radius:6px;margin-top:4px}
   .planner{padding:18px 16px 80px;overflow-y:auto;display:none}
   .organizzare{padding:18px 16px 80px;overflow-y:auto;display:none}
+  .plan-actions{display:flex;gap:8px;margin-top:12px}
+  .plan-actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border-radius:10px;font-size:13.5px;font-weight:700;text-decoration:none}
+  .plan-actions a svg{width:16px;height:16px}
+  .plan-actions .act-nav{background:var(--ink);color:#fff}
+  .plan-actions .act-call{background:#1f8a4c;color:#fff}
+  .plan-actions .act-call.disabled{background:var(--line);color:var(--ink-soft);pointer-events:none}
   .planner h2, .organizzare h2{font-size:17px;margin-bottom:6px}
   .planner .sub, .organizzare .sub{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5}
   .planner .soon, .organizzare .soon{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6}
@@ -203,6 +209,10 @@
     body.view-planner .list, body.view-planner .filters, body.view-planner .list-head{display:none}
     body.view-planner #planner{display:block !important}
     body.view-list #planner, body.view-map #planner{display:none !important}
+    /* su mobile planner e organizzare scorrono con la pagina, senza altezza
+       fissa o overflow interno che li troncherebbe */
+    #planner, #organizzare{overflow:visible;height:auto;padding-bottom:90px}
+    body.view-planner .sidebar, body.view-organizzare .sidebar{height:auto;overflow:visible;padding-bottom:0}
     /* vista Da organizzare (mobile) */
     body.view-organizzare .map-col{display:none}
     body.view-organizzare .list, body.view-organizzare .filters, body.view-organizzare .list-head{display:none}
@@ -241,7 +251,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.6.1</div>
+    <div class="version">v1.6.2</div>
   </div>
 </div>
 
@@ -765,9 +775,15 @@ function renderPlanner(){
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 7px;border-radius:5px;">'+col.l+'</span>'+
           '<span style="font-size:12px;color:var(--ink-soft);">'+(fmtOra(t.data)?'🕐 '+fmtOra(t.data)+' · ':'')+'~'+t.km+' km</span></div>'+
         '<div style="font-size:14px;font-weight:600;margin-top:5px;">'+esc(t.titolo||t.cliente||'Tappa')+'</div>'+
-        '<div style="font-size:12.5px;color:var(--ink-soft);margin-top:1px;">'+esc([t.indirizzo,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
-        (motoModello(t)?'<div style="font-size:12.5px;margin-top:2px;">'+esc(motoModello(t))+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
+        '<div style="font-size:12.5px;color:var(--ink-soft);margin-top:1px;">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+        (t.cliente||t.telefono?'<div style="font-size:12.5px;margin-top:3px;">'+esc(t.cliente||'')+(t.telefono?' · <a href="tel:'+esc(t.telefono)+'" style="color:var(--focus);text-decoration:none;">'+esc(t.telefono)+'</a>':'')+'</div>':'')+
+        (motoModello(t)?'<div style="font-size:12.5px;margin-top:2px;"><span style="color:var(--ink-soft);">Moto:</span> '+esc(motoModello(t))+(t.targa?' · '+esc(t.targa):'')+'</div>':'')+
+        (t.note?'<div style="margin-top:6px;font-size:11.5px;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:5px 8px;line-height:1.4;">'+esc(t.note)+'</div>':'')+
         '<div style="font-size:12px;color:var(--ink-soft);margin-top:8px;">'+plannerSlots(t.caricoDopo)+' <span style="vertical-align:middle;">'+(isCons?'consegnata, libera 1 posto':'ritirata, occupa 1 posto')+' → '+t.caricoDopo+'/3</span></div>'+
+        '<div class="plan-actions">'+
+          '<a class="act-nav" href="'+navUrl(t)+'" target="_blank" rel="noopener">'+NAV+' Naviga</a>'+
+          (t.telefono?'<a class="act-call" href="tel:'+esc(t.telefono)+'">'+CALL+' Chiama</a>':'<a class="act-call disabled">'+CALL+' No tel.</a>')+
+        '</div>'+
       '</div></div>';
   });
 
@@ -828,14 +844,26 @@ function disegnaPercorsoPlanner(giro, origine){
     if(gruppo.length>1){
       const pos=gruppo.indexOf(i);           // posizione in questo gruppo
       const ang=(2*Math.PI*pos)/gruppo.length; // distribuiti in cerchio
-      const raggio=0.0016;                    // ~150 m, abbastanza per separarli
+      const raggio=0.006;                    // ~600 m, visibile anche a zoom ampio
       lat=t.lat+raggio*Math.cos(ang);
       lng=t.lng+raggio*Math.sin(ang);
     }
     const icon=L.divIcon({className:'',html:'<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+col+';border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);color:#fff;font-size:13px;font-weight:700;">'+(i+1)+'</span></div>',iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
-    const nota=gruppo.length>1?'<br><span style="font-size:11px;color:#9a5a13;">⚠ stesso indirizzo di un\'altra tappa</span>':'';
-    L.marker([lat,lng],{icon}).addTo(plannerLayer)
-      .bindPopup('<b>'+(i+1)+'. '+esc(t.titolo||t.cliente||'Tappa')+'</b><br><span style="font-size:12px;color:#5a6573;">'+(isCons?'Consegna':'Ritiro')+' · ~'+t.km+' km</span>'+nota);
+    const nota=gruppo.length>1?'<div style="font-size:11px;color:#9a5a13;margin-top:4px;">⚠ stesso indirizzo di un\'altra tappa</div>':'';
+    // popup completo come nella mappa, con il numero della tappa e i km del giro
+    const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+    const mod=motoModello(t);
+    const popup='<div class="popup-card t-'+t.tipo+'">'+
+      '<div class="pbadge">'+(i+1)+'. '+(isCons?'Consegna':'Ritiro')+' · '+fmtDate(t.data)+(fmtOra(t.data)?' · '+fmtOra(t.data):'')+' · ~'+t.km+' km</div>'+
+      '<h4>'+esc(t.titolo||t.cliente||'Tappa')+'</h4>'+
+      '<p>'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+
+      (cli?'<br>'+cli:'')+
+      (t.targa?'<br><span class="plbl">Targa:</span> '+esc(t.targa):'')+
+      (mod?'<br><span class="plbl">Moto:</span> '+esc(mod):'')+'</p>'+
+      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      nota+
+      '<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a></div>';
+    L.marker([lat,lng],{icon}).addTo(plannerLayer).bindPopup(popup);
   });
 
   // inquadro il percorso
