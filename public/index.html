@@ -165,6 +165,28 @@
   .planner h2, .organizzare h2{font-size:17px;margin-bottom:6px}
   .planner .sub, .organizzare .sub{font-size:13px;color:var(--ink-soft);margin-bottom:18px;line-height:1.5}
   .planner .soon, .organizzare .soon{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6}
+  /* barra "Ordina per" */
+  .org-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .org-bar-lbl{font-size:12.5px;color:var(--ink-soft);font-weight:600}
+  .org-seg{display:flex;gap:3px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px}
+  .org-sort{border:0;background:transparent;padding:6px 12px;border-radius:6px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer}
+  .org-sort.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  /* chip provincia */
+  .org-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .org-chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;gap:5px}
+  .org-chip .n{background:var(--bg);border-radius:10px;padding:0 5px;font-size:10.5px}
+  .org-chip.active{border-color:var(--focus);background:#e7f0fe;color:#15489c}
+  .org-chip.active .n{background:#fff}
+  .org-count{font-size:12.5px;color:var(--ink-soft);margin-bottom:14px}
+  /* intestazione di zona */
+  .org-zona-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .org-zona-nome{font-size:14px;font-weight:700;color:var(--ink)}
+  .org-zona-prov{font-size:11px;font-weight:700;color:var(--ink-soft);background:var(--bg);border-radius:5px;padding:1px 7px}
+  .org-zona-meta{font-size:11.5px;color:var(--ink-soft)}
+  /* badge "da N giorni" e data creazione */
+  .org-age{font-size:11px;font-weight:600;color:var(--ink-soft);background:var(--bg);border-radius:5px;padding:1px 7px}
+  .org-age.vecchio{color:#a8200f;background:#fdecea}
+  .org-created{font-size:11.5px;color:var(--ink-soft);margin-top:5px}
   .org-card{border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin:0 0 10px;background:var(--panel)}
   .org-card h3{font-size:15px;font-weight:650;margin:9px 0 3px;letter-spacing:-.01em}
   .org-card .addr{font-size:13px;color:var(--ink-soft);line-height:1.4}
@@ -325,7 +347,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.7.2</div>
+    <div class="version">v1.8.1</div>
   </div>
 </div>
 
@@ -913,44 +935,155 @@ function mostraGiornoTrasporti(giorno, eventi){
   });
 }
 
+// stato dei filtri della sezione "Da organizzare"
+let orgState={ordina:'distanza', prov:''};
+const ZONA_RAGGIO_KM=25; // ampiezza di una "zona" per il raggruppamento
+
+// Data di creazione in formato leggibile (gg/mm/aaaa)
+function fmtDataCreazione(d){
+  if(!d) return '';
+  const dt=new Date(d); if(isNaN(dt)) return '';
+  return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+dt.getFullYear();
+}
+// Da quanti giorni la trattativa aspetta una data
+function giorniAttesa(d){
+  if(!d) return null;
+  const dt=new Date(d); if(isNaN(dt)) return null;
+  return Math.max(0, Math.floor((Date.now()-dt.getTime())/86400000));
+}
+
+// Raggruppa i trasporti in "zone": partendo dal piu' vicino allo showroom,
+// mette insieme tutti quelli entro ZONA_RAGGIO_KM da lui, poi ripete.
+// Restituisce un array di gruppi { nome, prov, kmMedio, items }.
+function raggruppaPerZona(lista){
+  const conGeo=lista.filter(t=>t.lat!=null).sort((a,b)=>(a.km_showroom??99999)-(b.km_showroom??99999));
+  const senzaGeo=lista.filter(t=>t.lat==null);
+  const gruppi=[];
+  const usati=new Set();
+  conGeo.forEach(seme=>{
+    if(usati.has(seme.id)) return;
+    const items=[seme];
+    usati.add(seme.id);
+    conGeo.forEach(t=>{
+      if(usati.has(t.id)) return;
+      if(distanzaKm(seme,t)<=ZONA_RAGGIO_KM){ items.push(t); usati.add(t.id); }
+    });
+    // nome zona: citta' del seme; province presenti nel gruppo
+    const province=[...new Set(items.map(x=>x.prov).filter(Boolean))];
+    const kmMedio=Math.round(items.reduce((s,x)=>s+(x.km_showroom||0),0)/items.length);
+    gruppi.push({nome:seme.citta||'Zona', prov:province.join(' · '), kmMedio, items});
+  });
+  if(senzaGeo.length) gruppi.push({nome:'Senza posizione', prov:'', kmMedio:null, items:senzaGeo});
+  return gruppi;
+}
+
+// HTML di una singola card "da organizzare"
+function orgCardHtml(t){
+  const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
+  const col=t.tipo==='consegna'?{f:'#e7f0fe',c:'#15489c',l:'Consegna'}:{f:'#fbf0e1',c:'#9a5a13',l:'Ritiro'};
+  const gg=giorniAttesa(t.creata);
+  return '<div class="org-card">'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+      '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 8px;border-radius:5px;">'+col.l+'</span>'+
+      (t.km_showroom!=null?'<span style="font-size:12px;color:var(--ink-soft);">📍 ~'+t.km_showroom+' km</span>':'')+
+      (gg!=null?'<span class="org-age'+(gg>30?' vecchio':'')+'">'+(gg===0?'oggi':'da '+gg+'g')+'</span>':'')+
+    '</div>'+
+    '<h3>'+esc(t.titolo)+'</h3>'+
+    '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
+    (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':'')+
+    (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
+    (t.creata?'<div class="org-created">Trattativa creata il '+fmtDataCreazione(t.creata)+'</div>':'')+
+    (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+    flagsHtml(t)+
+    '</div>';
+}
+
 function renderOrganizzare(){
   const el=document.getElementById('organizzare');
   if(!el) return;
-  const lista=DA_ORGANIZZARE||[];
+  const tutti=DA_ORGANIZZARE||[];
 
   let html='<h2>Da organizzare</h2>'+
     '<div class="sub">Trasporti a nostro carico con indirizzo, in attesa di una data. Assegna una data su HubSpot per calendarizzarli.</div>';
 
-  if(!lista.length){
+  if(!tutti.length){
     html+='<div class="soon">Nessun trasporto in attesa di data. Tutto organizzato! 🎉</div>';
     el.innerHTML=html; return;
   }
 
-  html+='<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;"><b>'+lista.length+'</b> '+(lista.length===1?'trasporto da organizzare':'trasporti da organizzare')+'</div>';
-
-  // ordino per distanza dallo showroom (i piu' vicini prima)
-  const ord=[...lista].sort((a,b)=>(a.km_showroom??99999)-(b.km_showroom??99999));
-
-  html+='<div class="org-list">';
-  ord.forEach(t=>{
-    const cli=[t.cliente, t.telefono?('<a href="tel:'+esc(t.telefono)+'">'+esc(t.telefono)+'</a>'):''].filter(Boolean).join(' · ');
-    const col=t.tipo==='consegna'?{f:'#e7f0fe',c:'#15489c',l:'Consegna'}:{f:'#fbf0e1',c:'#9a5a13',l:'Ritiro'};
-    html+='<div class="org-card">'+
-      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
-        '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:'+col.f+';color:'+col.c+';padding:2px 8px;border-radius:5px;">'+col.l+'</span>'+
-        (t.km_showroom!=null?'<span style="font-size:12px;color:var(--ink-soft);">📍 ~'+t.km_showroom+' km</span>':'')+
-      '</div>'+
-      '<h3>'+esc(t.titolo)+'</h3>'+
-      '<div class="addr">'+esc([t.indirizzo,t.cap,t.citta,t.prov?('('+t.prov+')'):''].filter(Boolean).join(' '))+'</div>'+
-      (cli?'<div class="cli">'+cli+(t.targa?' · Targa '+esc(t.targa):'')+'</div>':'')+
-      (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
-      (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
-      flagsHtml(t)+
-      '</div>';
+  // barra "Ordina per"
+  const opz=[['distanza','Distanza'],['data','Data creazione'],['zona','Zona']];
+  html+='<div class="org-bar"><span class="org-bar-lbl">Ordina per</span><div class="org-seg">';
+  opz.forEach(([k,lab])=>{
+    html+='<button class="org-sort'+(orgState.ordina===k?' active':'')+'" data-sort="'+k+'">'+lab+'</button>';
   });
-  html+='</div>';
+  html+='</div></div>';
+
+  // chip provincia (solo se ce n'e' piu' di una)
+  const province=[...new Set(tutti.map(t=>t.prov).filter(Boolean))].sort();
+  if(province.length>1){
+    html+='<div class="org-chips">'+
+      '<button class="org-chip'+(orgState.prov===''?' active':'')+'" data-prov="">Tutte</button>';
+    province.forEach(p=>{
+      const n=tutti.filter(t=>t.prov===p).length;
+      html+='<button class="org-chip'+(orgState.prov===p?' active':'')+'" data-prov="'+esc(p)+'">'+esc(p)+' <span class="n">'+n+'</span></button>';
+    });
+    html+='</div>';
+  }
+
+  // applico il filtro provincia
+  const lista=orgState.prov?tutti.filter(t=>t.prov===orgState.prov):tutti;
+
+  html+='<div class="org-count"><b>'+lista.length+'</b> '+(lista.length===1?'trasporto da organizzare':'trasporti da organizzare')+
+    (orgState.prov?' in provincia di '+esc(orgState.prov):'')+'</div>';
+
+  if(!lista.length){
+    html+='<div class="soon">Nessun trasporto per questa provincia.</div>';
+    el.innerHTML=html; agganciaOrganizzare(); return;
+  }
+
+  if(orgState.ordina==='zona'){
+    // raggruppo per zona geografica
+    const gruppi=raggruppaPerZona(lista);
+    gruppi.forEach(g=>{
+      html+='<div class="org-zona-head">'+
+        '<span class="org-zona-nome">'+esc(g.nome)+'</span>'+
+        (g.prov?'<span class="org-zona-prov">'+esc(g.prov)+'</span>':'')+
+        '<span class="org-zona-meta">'+g.items.length+' '+(g.items.length===1?'trasporto':'trasporti')+
+        (g.kmMedio!=null?' · ~'+g.kmMedio+' km dallo showroom':'')+'</span>'+
+      '</div>';
+      html+='<div class="org-list">';
+      g.items.forEach(t=>{ html+=orgCardHtml(t); });
+      html+='</div>';
+    });
+  }else{
+    const ord=[...lista];
+    if(orgState.ordina==='data'){
+      // le piu' vecchie prima (aspettano da piu' tempo)
+      ord.sort((a,b)=>{
+        const ta=a.creata?new Date(a.creata).getTime():Infinity;
+        const tb=b.creata?new Date(b.creata).getTime():Infinity;
+        return ta-tb;
+      });
+    }else{
+      ord.sort((a,b)=>(a.km_showroom??99999)-(b.km_showroom??99999));
+    }
+    html+='<div class="org-list">';
+    ord.forEach(t=>{ html+=orgCardHtml(t); });
+    html+='</div>';
+  }
 
   el.innerHTML=html;
+  agganciaOrganizzare();
+}
+
+function agganciaOrganizzare(){
+  document.querySelectorAll('#organizzare .org-sort').forEach(b=>{
+    b.addEventListener('click',()=>{ orgState.ordina=b.dataset.sort; renderOrganizzare(); });
+  });
+  document.querySelectorAll('#organizzare .org-chip').forEach(b=>{
+    b.addEventListener('click',()=>{ orgState.prov=b.dataset.prov; renderOrganizzare(); });
+  });
 }
 
 function renderPlanner(){

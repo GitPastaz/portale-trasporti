@@ -193,6 +193,10 @@ function calcolaAnomalie(t) {
   const dove = t.tipo === "ritiro" ? "di ritiro" : "di consegna";
   if (!t.autista) a.push("Autista non impostato");
   if (!t.veicolo) a.push("Veicolo non selezionato");
+  // i dati moto arrivano dalle Voci (line items) associate alla trattativa
+  if (!t.targa && !t.marca && !t.modello) {
+    a.push("Dati moto non trovati: verificare le Voci su HubSpot");
+  }
   if (!t.indirizzo) a.push("Indirizzo " + dove + " mancante: inserirlo su HubSpot");
   if (!t.cap) a.push("CAP mancante");
   if (!t.prov) a.push("Provincia mancante");
@@ -246,7 +250,7 @@ module.exports = async (req, res) => {
     oggi.setHours(0, 0, 0, 0);
     const oggiMs = oggi.getTime();
 
-    const propsList = Object.values(F).concat(["dealname", "pipeline", "dealstage"]);
+    const propsList = Object.values(F).concat(["dealname", "pipeline", "dealstage", "createdate"]);
 
     // Funzione che scarica le trattative di UNA ricerca, con paginazione
     async function scarica(filters) {
@@ -362,6 +366,7 @@ module.exports = async (req, res) => {
       registraSalvate(d);
       trasporti.push({
         _daOrganizzare: true, tipo: "consegna", data: null,
+        creata: p.createdate || null,
         indirizzo: p[F.indirizzoConsegna], citta: p[F.cittaConsegna],
         cap: p[F.capConsegna], prov: siglaProvincia(p[F.provinciaConsegna]),
         id: d.id, titolo: p.dealname || "Trasporto",
@@ -375,6 +380,7 @@ module.exports = async (req, res) => {
       registraSalvate(d);
       trasporti.push({
         _daOrganizzare: true, tipo: "ritiro", data: null,
+        creata: p.createdate || null,
         indirizzo: p[F.indirizzoRitiro], citta: p[F.cittaRitiro],
         cap: p[F.capRitiro], prov: siglaProvincia(p[F.provinciaRitiro]),
         id: d.id, titolo: p.dealname || "Trasporto",
@@ -404,22 +410,43 @@ module.exports = async (req, res) => {
         }
       } catch (e) {}
 
+      // Voci (line items) della trattativa: possono essere piu' di una
+      // (moto + accessori/servizi). L'ordine restituito dall'API NON e'
+      // garantito, quindi le leggo tutte e scelgo quella che contiene
+      // davvero i dati della moto.
       try {
         const assocL = await hs(
-          "/crm/v4/objects/deals/" + t.id + "/associations/line_items?limit=1",
+          "/crm/v4/objects/deals/" + t.id + "/associations/line_items?limit=100",
           TOKEN
         );
-        const lid = assocL.results && assocL.results[0] && assocL.results[0].toObjectId;
-        if (lid) {
-          const li = await hs(
-            "/crm/v3/objects/line_items/" + lid + "?properties=name,targa,marca,modello_moto",
-            TOKEN
-          );
-          const lp = li.properties || {};
-          t.targa = lp.targa || "";
-          t.marca = lp.marca || "";
-          t.modello = lp.modello_moto || "";
-          if (!t.titolo || t.titolo === "Trasporto") t.titolo = lp.name || t.titolo;
+        const ids = (assocL.results || [])
+          .map((r) => r.toObjectId)
+          .filter(Boolean);
+
+        if (ids.length) {
+          // una sola chiamata per leggere tutte le voci insieme
+          const batch = await hs("/crm/v3/objects/line_items/batch/read", TOKEN, {
+            method: "POST",
+            body: JSON.stringify({
+              properties: ["name", "targa", "marca", "modello_moto"],
+              inputs: ids.map((id) => ({ id: String(id) })),
+            }),
+          });
+          const voci = (batch.results || []).map((v) => v.properties || {});
+
+          // scelgo la voce "moto": prima quella con targa, poi quella con
+          // modello, poi quella con marca. Se nessuna ha dati, resto vuoto.
+          const conTarga = voci.find((v) => (v.targa || "").trim());
+          const conModello = voci.find((v) => (v.modello_moto || "").trim());
+          const conMarca = voci.find((v) => (v.marca || "").trim());
+          const moto = conTarga || conModello || conMarca || null;
+
+          if (moto) {
+            t.targa = moto.targa || "";
+            t.marca = moto.marca || "";
+            t.modello = moto.modello_moto || "";
+            if (!t.titolo || t.titolo === "Trasporto") t.titolo = moto.name || t.titolo;
+          }
         }
       } catch (e) {}
     }));
