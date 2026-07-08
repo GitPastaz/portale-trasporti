@@ -55,13 +55,25 @@ const F = {
 };
 
 // Fasi (dealstage) del Conto Esposizione in cui il trasporto e' gia'
-// avvenuto o la trattativa e' chiusa/persa: vanno escluse da "Da organizzare"
-// (sono lo storico pre-portale). La pipeline Vendita non ha intrusi.
+// avvenuto o la trattativa e' chiusa/persa: vanno escluse da "Da organizzare".
 const FASI_CE_ESCLUSE = [
   "3295795415", "5172594909", "5172594910", "4168541370", "5172594911",
   "4168541371", "1517507814", "1491411157", "5427280106", "1491411158",
   "5583540423", "4858382557", "2259898613", "2152219896", "1491589319",
   "5634262221", "1910224069",
+];
+
+// Fasi della pipeline Vendita da escludere da "Da organizzare":
+// trattative non ancora pronte per il trasporto, gia' concluse, o perse.
+const FASI_VENDITA_ESCLUSE = [
+  "1067216058", // Moto in Trattativa
+  "1517257939", // Lasciato Acconto
+  "1517201637", // Finanziamento in Approvazione
+  "1517201638", // Moto Saldata
+  "5479277788", // Guasto Rilevato
+  "1491854577", // Trattativa Persa - Preventivo Rifiutato
+  "3453073623", // Trattativa Persa - Finanziamento Rifiutato
+  "3453435092", // GARANZIA - In Lavorazione
 ];
 
 // Endpoint HubSpot. Gli account europei (token pat-eu1-...) devono usare
@@ -296,6 +308,7 @@ module.exports = async (req, res) => {
         { propertyName: F.modalitaConsegna, operator: "EQ", value: "Consegna a nostro Carico" },
         { propertyName: F.dataConsegna, operator: "NOT_HAS_PROPERTY" },
         { propertyName: F.indirizzoConsegna, operator: "HAS_PROPERTY" },
+        { propertyName: "dealstage", operator: "NOT_IN", values: FASI_VENDITA_ESCLUSE },
       ]),
       scarica([
         { propertyName: "pipeline", operator: "EQ", value: PIPELINE.CONTO_ESPOSIZIONE },

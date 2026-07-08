@@ -171,6 +171,7 @@
   .org-seg{display:flex;gap:3px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px}
   .org-sort{border:0;background:transparent;padding:6px 12px;border-radius:6px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer}
   .org-sort.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+  .org-raggio{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 9px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
   /* chip provincia */
   .org-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
   .org-chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;gap:5px}
@@ -347,7 +348,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.8.1</div>
+    <div class="version">v1.8.3</div>
   </div>
 </div>
 
@@ -936,8 +937,8 @@ function mostraGiornoTrasporti(giorno, eventi){
 }
 
 // stato dei filtri della sezione "Da organizzare"
-let orgState={ordina:'distanza', prov:''};
-const ZONA_RAGGIO_KM=25; // ampiezza di una "zona" per il raggruppamento
+let orgState={ordina:'distanza', prov:'', raggio:25};
+const ZONA_RAGGI=[10,15,25,40,60,100]; // scelte disponibili per l'ampiezza zona
 
 // Data di creazione in formato leggibile (gg/mm/aaaa)
 function fmtDataCreazione(d){
@@ -953,9 +954,10 @@ function giorniAttesa(d){
 }
 
 // Raggruppa i trasporti in "zone": partendo dal piu' vicino allo showroom,
-// mette insieme tutti quelli entro ZONA_RAGGIO_KM da lui, poi ripete.
+// mette insieme tutti quelli entro "raggio" km da lui, poi ripete.
 // Restituisce un array di gruppi { nome, prov, kmMedio, items }.
-function raggruppaPerZona(lista){
+function raggruppaPerZona(lista, raggio){
+  const R=raggio||25;
   const conGeo=lista.filter(t=>t.lat!=null).sort((a,b)=>(a.km_showroom??99999)-(b.km_showroom??99999));
   const senzaGeo=lista.filter(t=>t.lat==null);
   const gruppi=[];
@@ -966,7 +968,7 @@ function raggruppaPerZona(lista){
     usati.add(seme.id);
     conGeo.forEach(t=>{
       if(usati.has(t.id)) return;
-      if(distanzaKm(seme,t)<=ZONA_RAGGIO_KM){ items.push(t); usati.add(t.id); }
+      if(distanzaKm(seme,t)<=R){ items.push(t); usati.add(t.id); }
     });
     // nome zona: citta' del seme; province presenti nel gruppo
     const province=[...new Set(items.map(x=>x.prov).filter(Boolean))];
@@ -1017,7 +1019,16 @@ function renderOrganizzare(){
   opz.forEach(([k,lab])=>{
     html+='<button class="org-sort'+(orgState.ordina===k?' active':'')+'" data-sort="'+k+'">'+lab+'</button>';
   });
-  html+='</div></div>';
+  html+='</div>';
+  // selettore ampiezza zona: compare solo quando l'ordinamento e' "Zona"
+  if(orgState.ordina==='zona'){
+    html+='<span class="org-bar-lbl">Raggio zona</span><select class="org-raggio" id="org-raggio">';
+    ZONA_RAGGI.forEach(r=>{
+      html+='<option value="'+r+'"'+(orgState.raggio===r?' selected':'')+'>'+r+' km</option>';
+    });
+    html+='</select>';
+  }
+  html+='</div>';
 
   // chip provincia (solo se ce n'e' piu' di una)
   const province=[...new Set(tutti.map(t=>t.prov).filter(Boolean))].sort();
@@ -1043,8 +1054,10 @@ function renderOrganizzare(){
   }
 
   if(orgState.ordina==='zona'){
-    // raggruppo per zona geografica
-    const gruppi=raggruppaPerZona(lista);
+    // raggruppo per zona geografica, con l'ampiezza scelta dall'utente
+    const gruppi=raggruppaPerZona(lista, orgState.raggio);
+    html+='<div class="org-count" style="margin-top:-8px;">Raggruppati in <b>'+gruppi.length+'</b> '+
+      (gruppi.length===1?'zona':'zone')+' entro '+orgState.raggio+' km l\'una.</div>';
     gruppi.forEach(g=>{
       html+='<div class="org-zona-head">'+
         '<span class="org-zona-nome">'+esc(g.nome)+'</span>'+
@@ -1084,6 +1097,8 @@ function agganciaOrganizzare(){
   document.querySelectorAll('#organizzare .org-chip').forEach(b=>{
     b.addEventListener('click',()=>{ orgState.prov=b.dataset.prov; renderOrganizzare(); });
   });
+  const r=document.getElementById('org-raggio');
+  if(r) r.addEventListener('change',()=>{ orgState.raggio=parseInt(r.value,10)||25; renderOrganizzare(); });
 }
 
 function renderPlanner(){
