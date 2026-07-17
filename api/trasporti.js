@@ -48,6 +48,7 @@ const F = {
   veicolo: "veicolo_del_trasporto",
   autista: "autista_del_trasporto",
   note: "note_trasporto",
+  costo: "costo_trasporto_al_cliente", // importo da incassare dal cliente
   // Coordinate salvate (per non richiamare Nominatim ogni volta)
   lat: "latitudine",
   lng: "longitudine",
@@ -349,6 +350,7 @@ module.exports = async (req, res) => {
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
         veicolo: p[F.veicolo] || "",
         note: p[F.note] || "",
+        costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -367,6 +369,7 @@ module.exports = async (req, res) => {
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
         veicolo: p[F.veicolo] || "",
         note: p[F.note] || "",
+        costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -384,7 +387,7 @@ module.exports = async (req, res) => {
         cap: p[F.capConsegna], prov: siglaProvincia(p[F.provinciaConsegna]),
         id: d.id, titolo: p.dealname || "Trasporto",
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "", note: p[F.note] || "",
+        veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -398,7 +401,7 @@ module.exports = async (req, res) => {
         cap: p[F.capRitiro], prov: siglaProvincia(p[F.provinciaRitiro]),
         id: d.id, titolo: p.dealname || "Trasporto",
         autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "", note: p[F.note] || "",
+        veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }

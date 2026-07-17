@@ -57,7 +57,9 @@ module.exports = async (req, res) => {
 
   const id = body && body.id;
   const tipo = body && body.tipo;
-  const dataISO = body && body.data; // stringa ISO dal browser, o "" per svuotare
+  // millisecondi epoch (istante assoluto) gia' calcolati dal browser nel
+  // fuso locale dell'utente. Stringa vuota = svuota il campo.
+  const ms = body && body.ms;
 
   // --- Validazioni ---
   if (!id) {
@@ -68,15 +70,15 @@ module.exports = async (req, res) => {
   }
   const campo = CAMPO_DATA[tipo];
 
-  // valore da scrivere: HubSpot per i campi data/ora vuole i millisecondi
-  // epoch come stringa. Se dataISO e' vuoto, svuoto il campo (null).
+  // valore da scrivere: HubSpot vuole i millisecondi epoch come stringa.
+  // Se ms e' vuoto, svuoto il campo (null).
   let valore = null;
-  if (dataISO) {
-    const d = new Date(dataISO);
-    if (isNaN(d.getTime())) {
+  if (ms !== "" && ms != null) {
+    const n = Number(ms);
+    if (!Number.isFinite(n)) {
       return res.status(400).json({ error: "Data non valida" });
     }
-    valore = String(d.getTime());
+    valore = String(n);
   }
 
   try {

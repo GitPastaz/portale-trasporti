@@ -201,6 +201,8 @@
   .org-age.vecchio{color:#a8200f;background:#fdecea}
   .org-created{font-size:11.5px;color:var(--ink-soft);margin-top:5px}
   .org-card{border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin:0 0 10px;background:var(--panel)}
+  .costo-badge{margin-top:8px;font-size:13px;color:#0b6b3a;background:#e6f6ec;border:1px solid #b8e6c8;border-radius:8px;padding:8px 10px;line-height:1.35}
+  .costo-badge b{font-size:14.5px}
   .org-card h3{font-size:15px;font-weight:650;margin:9px 0 3px;letter-spacing:-.01em}
   .org-card .addr{font-size:13px;color:var(--ink-soft);line-height:1.4}
   .org-card .cli{font-size:12.5px;color:var(--ink);margin-top:6px}
@@ -358,7 +360,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.9.0</div>
+    <div class="version">v1.9.1</div>
   </div>
 </div>
 
@@ -597,6 +599,28 @@ function motoModello(t){
   // "Marca Modello" se presenti
   return [t.marca,t.modello].filter(Boolean).join(' ');
 }
+// Interpreta il costo (puo' arrivare come "1.234,50" o "1234.50") in numero.
+function costoNumero(t){
+  if(t.costo==null||t.costo==='') return null;
+  let s=String(t.costo).trim().replace(/[^\d.,-]/g,'');
+  if(s==='') return null;
+  // se c'e' sia . che , l'ultimo separatore e' il decimale
+  if(s.indexOf(',')>-1 && s.indexOf('.')>-1){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(/,/g,'');
+  }else if(s.indexOf(',')>-1){
+    s=s.replace(',','.');
+  }
+  const n=parseFloat(s);
+  return isNaN(n)?null:n;
+}
+// Badge "Da incassare" con l'importo, mostrato solo se > 0.
+function costoBadge(t){
+  const n=costoNumero(t);
+  if(n==null||n<=0) return '';
+  const imp=n.toLocaleString('it-IT',{minimumFractionDigits:0,maximumFractionDigits:2});
+  return '<div class="costo-badge">💶 Da incassare dal cliente: <b>€ '+imp+'</b></div>';
+}
 function popupHtml(t){
   const cli=[t.cliente,t.telefono].filter(Boolean).join(' · ');
   const mod=motoModello(t);
@@ -614,6 +638,7 @@ function popupHtml(t){
     '</p>'+
     (avBlocco.length?'<div class="popup-av">'+avBlocco.join('<br>')+'</div>':'')+
     (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+    costoBadge(t)+
     flagsHtml(t)+
     '<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a></div>';
 }
@@ -699,6 +724,7 @@ function render(){
         (t.autista?'<div>Autista:<b>'+esc(t.autista)+'</b></div>':'')+
         (t.veicolo?'<div>Veicolo:<b>'+esc(t.veicolo)+'</b></div>':'')+'</div>':'')+
       (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      costoBadge(t)+
       flagsHtml(t)+
       '<div class="card-actions">'+
         (t.lat!=null?'<a class="act-nav" href="'+navUrl(t)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+NAV+' Naviga</a>':'')+
@@ -915,6 +941,7 @@ function mostraDettaglioTrasporto(t){
       (t.veicolo?'<div class="cal-modal-row"><b>Veicolo:</b> '+esc(t.veicolo)+'</div>':'')+
       (t.km_showroom!=null?'<div class="cal-modal-row"><b>Distanza:</b> ~'+t.km_showroom+' km dallo showroom</div>':'')+
       (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+      costoBadge(t)+
       '<button class="data-btn" id="mod-data-btn">'+CAL+' '+(t.data?'Modifica data e ora':'Imposta data e ora')+'</button>'+
       (t.lat!=null?'<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a>':'')+
     '</div>'+
@@ -974,10 +1001,20 @@ function apriModificaData(t){
   const msg=document.getElementById('data-msg');
   const salva=async(nuovoValore)=>{
     msg.textContent='Salvataggio in corso…'; msg.className='data-msg attesa';
+    // Converto qui, nel browser: new Date(valore).getTime() interpreta
+    // l'orario digitato nel fuso LOCALE dell'utente (ora italiana) e
+    // restituisce l'istante assoluto in millisecondi. Cosi' HubSpot
+    // registra esattamente l'ora scelta, senza slittamenti di fuso.
+    let ms='';
+    if(nuovoValore){
+      const d=new Date(nuovoValore);
+      if(isNaN(d.getTime())){ msg.textContent='Data non valida.'; msg.className='data-msg errore'; return; }
+      ms=String(d.getTime());
+    }
     try{
       const r=await fetch('/api/imposta-data',{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id:t.id, tipo:t.tipo, data:nuovoValore})
+        body:JSON.stringify({id:t.id, tipo:t.tipo, ms:ms})
       });
       const out=await r.json();
       if(!r.ok||out.error) throw new Error(out.error||'errore');
@@ -1088,6 +1125,7 @@ function orgCardHtml(t){
     (motoModello(t)?'<div class="moto-mod"><span class="lbl">Moto:</span> '+esc(motoModello(t))+'</div>':'')+
     (t.creata?'<div class="org-created">Trattativa creata il '+fmtDataCreazione(t.creata)+'</div>':'')+
     (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
+    costoBadge(t)+
     flagsHtml(t)+
     '<button class="data-btn org-data-btn" data-id="'+esc(t.id)+'">'+CAL+' Imposta data e ora</button>'+
     '</div>';
