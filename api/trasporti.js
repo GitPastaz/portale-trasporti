@@ -16,11 +16,6 @@ const ORIGINE = {
 };
 
 // --- Traduzione valori tendine: value salvato -> label leggibile ---
-const AUTISTI = {
-  "Giuseppe": "Giuseppe Soldi",
-  "Matteo Zagni": "Matteo Zagni",
-};
-
 // ID interni delle pipeline su HubSpot. Il tipo di trattativa
 // (consegna / ritiro) si ricava dalla pipeline, non da un campo.
 const PIPELINE = {
@@ -242,6 +237,21 @@ async function hs(path, token, options = {}) {
   return r.json();
 }
 
+// Legge le opzioni di un campo a tendina (enumeration) da HubSpot.
+// Restituisce un array di { valore, etichetta } dove "valore" e' il
+// valore interno da scrivere via API e "etichetta" e' cio' che si mostra.
+// Esclude le opzioni nascoste/archiviate.
+async function opzioniCampo(slug, token) {
+  try {
+    const p = await hs("/crm/v3/properties/deals/" + slug, token);
+    return (p.options || [])
+      .filter((o) => !o.hidden)
+      .map((o) => ({ valore: o.value, etichetta: o.label || o.value }));
+  } catch (e) {
+    return [];
+  }
+}
+
 module.exports = async (req, res) => {
   const TOKEN = process.env.HUBSPOT_TOKEN;
   if (!TOKEN) {
@@ -347,8 +357,8 @@ module.exports = async (req, res) => {
         prov: siglaProvincia(p[F.provinciaConsegna]),
         id: d.id,
         titolo: p.dealname || "Trasporto",
-        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "",
+        autistaVal: p[F.autista] || "", autista: "",
+        veicoloVal: p[F.veicolo] || "", veicolo: p[F.veicolo] || "",
         note: p[F.note] || "",
         costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
@@ -366,8 +376,8 @@ module.exports = async (req, res) => {
         prov: siglaProvincia(p[F.provinciaRitiro]),
         id: d.id,
         titolo: p.dealname || "Trasporto",
-        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "",
+        autistaVal: p[F.autista] || "", autista: "",
+        veicoloVal: p[F.veicolo] || "", veicolo: p[F.veicolo] || "",
         note: p[F.note] || "",
         costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
@@ -386,8 +396,8 @@ module.exports = async (req, res) => {
         indirizzo: p[F.indirizzoConsegna], citta: p[F.cittaConsegna],
         cap: p[F.capConsegna], prov: siglaProvincia(p[F.provinciaConsegna]),
         id: d.id, titolo: p.dealname || "Trasporto",
-        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
+        autistaVal: p[F.autista] || "", autista: "",
+        veicoloVal: p[F.veicolo] || "", veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -400,8 +410,8 @@ module.exports = async (req, res) => {
         indirizzo: p[F.indirizzoRitiro], citta: p[F.cittaRitiro],
         cap: p[F.capRitiro], prov: siglaProvincia(p[F.provinciaRitiro]),
         id: d.id, titolo: p.dealname || "Trasporto",
-        autista: AUTISTI[p[F.autista]] || p[F.autista] || "",
-        veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
+        autistaVal: p[F.autista] || "", autista: "",
+        veicoloVal: p[F.veicolo] || "", veicolo: p[F.veicolo] || "", note: p[F.note] || "", costo: p[F.costo] || "",
         cliente: "", telefono: "", targa: "", marca: "", modello: "",
       });
     }
@@ -560,6 +570,22 @@ module.exports = async (req, res) => {
     // riepilogo anomalie per il contatore in cima al portale (solo datati)
     const conAnomalie = datati.filter((t) => t.anomalie && t.anomalie.length).length;
 
+    // opzioni delle tendine autista e veicolo (per la modifica dal portale)
+    const [opzAutista, opzVeicolo] = await Promise.all([
+      opzioniCampo(F.autista, TOKEN),
+      opzioniCampo(F.veicolo, TOKEN),
+    ]);
+
+    // risolvo le etichette leggibili dai valori interni salvati nei trasporti
+    const mappaAut = {};
+    opzAutista.forEach((o) => { mappaAut[o.valore] = o.etichetta; });
+    const mappaVei = {};
+    opzVeicolo.forEach((o) => { mappaVei[o.valore] = o.etichetta; });
+    [...datati, ...daOrganizzare].forEach((t) => {
+      if (t.autistaVal) t.autista = mappaAut[t.autistaVal] || t.autistaVal;
+      if (t.veicoloVal) t.veicolo = mappaVei[t.veicoloVal] || t.veicoloVal;
+    });
+
     // Cache breve lato CDN (30s) per assorbire clic ravvicinati di piu'
     // utenti, ma il browser non deve mai servire una copia vecchia: cosi'
     // "Aggiorna" mostra sempre lo stato reale di HubSpot.
@@ -568,6 +594,7 @@ module.exports = async (req, res) => {
       origine: origineOut,
       trasporti: datati,
       da_organizzare: daOrganizzare,
+      opzioni: { autista: opzAutista, veicolo: opzVeicolo },
       riepilogo: {
         totale: datati.length,
         con_anomalie: conAnomalie,

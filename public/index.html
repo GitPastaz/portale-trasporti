@@ -148,7 +148,7 @@
   .data-btn{margin-top:12px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--focus);color:#fff;border:0;padding:11px;border-radius:10px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
   .data-btn svg{width:16px;height:16px}
   .data-field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink-soft);font-weight:600}
-  .data-field input{border:1px solid var(--line);border-radius:9px;padding:11px;font:inherit;font-size:15px;color:var(--ink)}
+  .data-field input, .data-field select{border:1px solid var(--line);border-radius:9px;padding:11px;font:inherit;font-size:15px;color:var(--ink);background:var(--panel)}
   .data-actions{display:flex;gap:8px;margin-top:14px}
   .data-save{flex:1;background:#1f8a4c;color:#fff;border:0;padding:12px;border-radius:10px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
   .data-clear{background:var(--panel);color:#a8200f;border:1px solid #f0c4bd;padding:12px 14px;border-radius:10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
@@ -360,7 +360,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.9.1</div>
+    <div class="version">v1.10.0</div>
   </div>
 </div>
 
@@ -444,7 +444,7 @@ const NAV='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wid
 const CAL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
 const CALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
-let map, markers={}, selected=null, ORIGIN=null, TRASPORTI=[], DA_ORGANIZZARE=[];
+let map, markers={}, selected=null, ORIGIN=null, TRASPORTI=[], DA_ORGANIZZARE=[], OPZIONI={autista:[],veicolo:[]};
 let state={type:'all',date:''};
 
 /* ---- LOGIN ---- */
@@ -541,7 +541,7 @@ async function load(tentativo){
     if(!r.ok) throw new Error('http '+r.status);
     const data=await r.json();
     if(data && data.error) throw new Error(data.error);
-    ORIGIN=data.origine; TRASPORTI=data.trasporti||[]; DA_ORGANIZZARE=data.da_organizzare||[];
+    ORIGIN=data.origine; TRASPORTI=data.trasporti||[]; DA_ORGANIZZARE=data.da_organizzare||[]; OPZIONI=data.opzioni||{autista:[],veicolo:[]};
     disegnaTuttiIMarker();
     render();
     // se sono nella vista organizzare/pianificatore, aggiorno anche quelle
@@ -730,7 +730,7 @@ function render(){
         (t.lat!=null?'<a class="act-nav" href="'+navUrl(t)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+NAV+' Naviga</a>':'')+
         (t.telefono?'<a class="act-call" href="tel:'+esc(t.telefono)+'" onclick="event.stopPropagation()">'+CALL+' Chiama</a>':'<a class="act-call disabled">'+CALL+' No tel.</a>')+
       '</div>'+
-      '<button class="data-btn card-data-btn" data-id="'+esc(t.id)+'">'+CAL+' '+(t.data?'Modifica data e ora':'Imposta data e ora')+'</button>'+
+      '<button class="data-btn card-data-btn" data-id="'+esc(t.id)+'">'+CAL+' '+(t.data?'Modifica trasporto':'Organizza trasporto')+'</button>'+
       '</div>';
   });
   list.innerHTML=html;
@@ -942,7 +942,7 @@ function mostraDettaglioTrasporto(t){
       (t.km_showroom!=null?'<div class="cal-modal-row"><b>Distanza:</b> ~'+t.km_showroom+' km dallo showroom</div>':'')+
       (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
       costoBadge(t)+
-      '<button class="data-btn" id="mod-data-btn">'+CAL+' '+(t.data?'Modifica data e ora':'Imposta data e ora')+'</button>'+
+      '<button class="data-btn" id="mod-data-btn">'+CAL+' '+(t.data?'Modifica trasporto':'Organizza trasporto')+'</button>'+
       (t.lat!=null?'<a class="nav-btn" target="_blank" rel="noopener" href="'+navUrl(t)+'">'+NAV+' Avvia navigazione</a>':'')+
     '</div>'+
   '</div>';
@@ -966,22 +966,39 @@ function isoPerInput(d){
   return dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate())+'T'+p(dt.getHours())+':'+p(dt.getMinutes());
 }
 
-// Pannello per impostare/modificare la data e ora di un trasporto.
-// Scrive su HubSpot tramite l'endpoint /api/imposta-data, sul campo
-// corretto in base al tipo (consegna -> data_consegna,
-// ritiro -> data ritiro). Chiede conferma esplicita prima di salvare.
+// Pannello per modificare data/ora, autista e veicolo di un trasporto.
+// Le tendine autista/veicolo usano le opzioni lette da HubSpot in tempo
+// reale (OPZIONI), inviando il valore interno. Un'unica PATCH aggiorna
+// tutti i campi modificati. Chiede conferma prima di svuotare la data.
 function apriModificaData(t){
   const valore=isoPerInput(t.data);
   const tipoLbl=t.tipo==='consegna'?'consegna':'ritiro';
+
+  // costruisco le due tendine dalle opzioni HubSpot, preselezionando
+  // il valore attuale del trasporto (autistaVal / veicoloVal)
+  const opt=(lista,sel)=>{
+    let h='<option value="">— non impostato —</option>';
+    (lista||[]).forEach(o=>{
+      h+='<option value="'+esc(o.valore)+'"'+(String(sel)===String(o.valore)?' selected':'')+'>'+esc(o.etichetta)+'</option>';
+    });
+    return h;
+  };
+
   const html='<div class="cal-modal-back" id="data-modal-back">'+
     '<div class="cal-modal">'+
       '<div class="cal-modal-head">'+
-        '<span style="font-weight:650;">'+(t.data?'Modifica':'Imposta')+' data di '+tipoLbl+'</span>'+
+        '<span style="font-weight:650;">Modifica trasporto</span>'+
         '<button class="cal-modal-x" id="data-modal-x">✕</button>'+
       '</div>'+
-      '<div class="cal-modal-row" style="margin-bottom:10px;">'+esc(t.titolo||'')+'</div>'+
+      '<div class="cal-modal-row" style="margin-bottom:12px;">'+esc(t.titolo||'')+'</div>'+
       '<label class="data-field">Data e ora di '+tipoLbl+
         '<input type="datetime-local" id="data-input" value="'+valore+'">'+
+      '</label>'+
+      '<label class="data-field" style="margin-top:12px;">Autista'+
+        '<select id="autista-input">'+opt(OPZIONI.autista, t.autistaVal)+'</select>'+
+      '</label>'+
+      '<label class="data-field" style="margin-top:12px;">Veicolo'+
+        '<select id="veicolo-input">'+opt(OPZIONI.veicolo, t.veicoloVal)+'</select>'+
       '</label>'+
       '<div class="data-actions">'+
         (t.data?'<button class="data-clear" id="data-clear">Rimuovi data</button>':'')+
@@ -999,41 +1016,46 @@ function apriModificaData(t){
   back.addEventListener('click',e=>{ if(e.target===back) chiudi(); });
 
   const msg=document.getElementById('data-msg');
-  const salva=async(nuovoValore)=>{
+  // salva tutti i campi modificati insieme. svuotaData=true rimuove la data.
+  const salva=async(svuotaData)=>{
     msg.textContent='Salvataggio in corso…'; msg.className='data-msg attesa';
-    // Converto qui, nel browser: new Date(valore).getTime() interpreta
-    // l'orario digitato nel fuso LOCALE dell'utente (ora italiana) e
-    // restituisce l'istante assoluto in millisecondi. Cosi' HubSpot
-    // registra esattamente l'ora scelta, senza slittamenti di fuso.
-    let ms='';
-    if(nuovoValore){
-      const d=new Date(nuovoValore);
-      if(isNaN(d.getTime())){ msg.textContent='Data non valida.'; msg.className='data-msg errore'; return; }
-      ms=String(d.getTime());
+    const payload={id:t.id, tipo:t.tipo};
+
+    if(svuotaData){
+      payload.ms='';
+    }else{
+      const v=document.getElementById('data-input').value;
+      if(v){
+        // converto nel browser (fuso locale) per evitare slittamenti di ora
+        const d=new Date(v);
+        if(isNaN(d.getTime())){ msg.textContent='Data non valida.'; msg.className='data-msg errore'; return; }
+        payload.ms=String(d.getTime());
+      }else{
+        payload.ms='';
+      }
     }
+    // autista e veicolo: mando sempre il valore selezionato (anche vuoto)
+    payload.autista=document.getElementById('autista-input').value;
+    payload.veicolo=document.getElementById('veicolo-input').value;
+
     try{
       const r=await fetch('/api/imposta-data',{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id:t.id, tipo:t.tipo, ms:ms})
+        body:JSON.stringify(payload)
       });
       const out=await r.json();
       if(!r.ok||out.error) throw new Error(out.error||'errore');
-      msg.textContent='Data aggiornata ✓'; msg.className='data-msg ok';
-      // ricarico i dati dal server per riflettere la modifica ovunque
+      msg.textContent='Trasporto aggiornato ✓'; msg.className='data-msg ok';
       setTimeout(()=>{ chiudi(); load(); }, 700);
     }catch(e){
       msg.textContent='Errore nel salvataggio. Riprova.'; msg.className='data-msg errore';
     }
   };
 
-  document.getElementById('data-save').addEventListener('click',()=>{
-    const v=document.getElementById('data-input').value;
-    if(!v){ msg.textContent='Scegli una data e un orario.'; msg.className='data-msg errore'; return; }
-    salva(v);
-  });
+  document.getElementById('data-save').addEventListener('click',()=>salva(false));
   const clr=document.getElementById('data-clear');
   if(clr) clr.addEventListener('click',()=>{
-    if(confirm('Rimuovere la data? Il trasporto tornerà tra quelli da organizzare.')) salva('');
+    if(confirm('Rimuovere la data? Il trasporto tornerà tra quelli da organizzare.')) salva(true);
   });
 }
 
@@ -1127,7 +1149,7 @@ function orgCardHtml(t){
     (t.note?'<div class="note">'+esc(t.note)+'</div>':'')+
     costoBadge(t)+
     flagsHtml(t)+
-    '<button class="data-btn org-data-btn" data-id="'+esc(t.id)+'">'+CAL+' Imposta data e ora</button>'+
+    '<button class="data-btn org-data-btn" data-id="'+esc(t.id)+'">'+CAL+' Organizza trasporto</button>'+
     '</div>';
 }
 

@@ -60,33 +60,50 @@ module.exports = async (req, res) => {
   // millisecondi epoch (istante assoluto) gia' calcolati dal browser nel
   // fuso locale dell'utente. Stringa vuota = svuota il campo.
   const ms = body && body.ms;
+  // valori interni delle tendine (undefined = non toccare il campo)
+  const autista = body && body.autista;
+  const veicolo = body && body.veicolo;
 
   // --- Validazioni ---
   if (!id) {
     return res.status(400).json({ error: "ID trasporto mancante" });
   }
-  if (tipo !== "consegna" && tipo !== "ritiro") {
-    return res.status(400).json({ error: "Tipo trasporto non valido" });
-  }
-  const campo = CAMPO_DATA[tipo];
 
-  // valore da scrivere: HubSpot vuole i millisecondi epoch come stringa.
-  // Se ms e' vuoto, svuoto il campo (null).
-  let valore = null;
-  if (ms !== "" && ms != null) {
-    const n = Number(ms);
-    if (!Number.isFinite(n)) {
-      return res.status(400).json({ error: "Data non valida" });
+  // Costruisco l'insieme delle proprieta' da aggiornare: includo solo
+  // quelle effettivamente presenti nel body, cosi' lo stesso endpoint
+  // serve per modificare data, autista, veicolo (singolarmente o insieme).
+  const props = {};
+
+  // Data: richiede il tipo per sapere su quale campo scrivere
+  if (ms !== undefined) {
+    if (tipo !== "consegna" && tipo !== "ritiro") {
+      return res.status(400).json({ error: "Tipo trasporto non valido" });
     }
-    valore = String(n);
+    let valore = null;
+    if (ms !== "" && ms != null) {
+      const n = Number(ms);
+      if (!Number.isFinite(n)) {
+        return res.status(400).json({ error: "Data non valida" });
+      }
+      valore = String(n);
+    }
+    props[CAMPO_DATA[tipo]] = valore;
+  }
+
+  // Autista e Veicolo: valore interno della tendina, o "" per svuotare
+  if (autista !== undefined) props["autista_del_trasporto"] = autista || null;
+  if (veicolo !== undefined) props["veicolo_del_trasporto"] = veicolo || null;
+
+  if (Object.keys(props).length === 0) {
+    return res.status(400).json({ error: "Nessun campo da aggiornare" });
   }
 
   try {
     await hs("/crm/v3/objects/deals/" + id, TOKEN, {
       method: "PATCH",
-      body: JSON.stringify({ properties: { [campo]: valore } }),
+      body: JSON.stringify({ properties: props }),
     });
-    return res.status(200).json({ ok: true, campo, valore });
+    return res.status(200).json({ ok: true, props });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
