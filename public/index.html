@@ -360,7 +360,7 @@
     <div class="err" id="login-err"></div>
     <input type="password" id="pwd" placeholder="Password" autocomplete="current-password">
     <button id="login-btn">Entra</button>
-    <div class="version">v1.10.0</div>
+    <div class="version">v1.10.1</div>
   </div>
 </div>
 
@@ -506,7 +506,11 @@ function init(){
   const startView = window.innerWidth<=860 ? 'list' : 'map';
   document.body.classList.add('view-'+startView);
   map = L.map('map',{zoomControl:true}).setView([45.62,9.30],9);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(map);
+  // Sfondo mappa: OpenStreetMap standard (CARTO ora richiede una chiave API).
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    maxZoom:19
+  }).addTo(map);
   // imposto lo stato attivo iniziale delle barre
   document.querySelectorAll('#bottom-nav button, #view-switch button').forEach(x=>{
     x.classList.toggle('active', x.dataset.view===startView);
